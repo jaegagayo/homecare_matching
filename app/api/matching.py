@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import logging
 import math
@@ -11,7 +12,10 @@ from ..models.matching import (
     CaregiverForMatching,
     TimeRange
 )
-from ..entities.base import PersonalityType
+from ..entities.base import PersonalityType, ServiceType
+from ..services.data_service import MatchingDataService
+from ..services.model_converter import ModelConverter
+from ..services.dependencies import get_matching_data_service
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -20,33 +24,87 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("/recommend", response_model=MatchingResponseDTO)
-async def recommend_matching(request: MatchingRequestDTO):
+async def recommend_matching(
+    request: MatchingRequestDTO,
+    data_service: MatchingDataService = Depends(get_matching_data_service)
+):
     """
-    매칭 처리 API
-    Spring 서버에서 수요자와 요양보호사 정보를 받아 매칭 처리 후 결과 반환
+    매칭 처리 API - DTO 정보 직접 활용 + 요양보호사만 ORM 조회
+    
+    1. DTO 정보로 직접 ConsumerForMatching 생성
+    2. 서비스 타입으로 요양보호사 목록만 ORM 조회  
+    3. 매칭 알고리즘 실행하여 최고 점수 1명 선택
+    4. 선택된 요양보호사 정보를 MatchingResponseDTO로 반환
     """
     try:
-        logger.info(f"매칭 요청 받음 - 수요자: {request.consumer.serviceRequest_id}, 요양보호사 수: {len(request.caregivers)}")
+        logger.info(f"매칭 요청 받음 - 서비스 요청 ID: {request.serviceRequestId}")
         
-        # 매칭 알고리즘 실행
-        matched_caregivers = await execute_matching_algorithm(request.consumer, request.caregivers)
+        # 1. DTO 정보로 직접 ConsumerForMatching 생성
+        consumer_matching = create_consumer_from_dto(request)
+        if not consumer_matching:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="수요자 데이터 변환에 실패했습니다"
+            )
         
-        # 응답 생성
-        if matched_caregivers:
-            message = f"최적의 요양보호사 1명이 매칭되었습니다."
-        else:
-            message = "조건에 맞는 요양보호사가 없습니다."
-            
-        response = MatchingResponseDTO(
-            matched_caregivers=matched_caregivers,
-            total_matches=len(matched_caregivers),
-            status="success",
-            message=message
+        logger.info(f"수요자 정보 생성 완료 - 서비스 타입: {consumer_matching.service_type.value}")
+        
+        # 2. 요양보호사 목록 조회 (서비스 타입 기준) - 주입받은 서비스 사용  
+        caregivers = await data_service.get_available_caregivers(request)
+        if not caregivers:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="조건에 맞는 요양보호사가 없습니다"
+            )
+        
+        # 3. 요양보호사 Entity를 Matching 모델로 변환
+        caregivers_matching = ModelConverter.caregivers_to_matching_models(caregivers)
+        if not caregivers_matching:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="요양보호사 데이터 변환에 실패했습니다"
+            )
+        
+        logger.info(f"데이터 변환 완료 - 수요자: 1명, 요양보호사: {len(caregivers_matching)}명")
+        
+        # 4. 매칭 알고리즘 실행
+        matched_caregivers = await execute_matching_algorithm(consumer_matching, caregivers_matching)
+        
+        if not matched_caregivers:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="매칭 조건을 만족하는 요양보호사가 없습니다"
+            )
+        
+        # 5. 최고 점수 요양보호사 1명 선택
+        best_match = matched_caregivers[0]  # 이미 점수 순으로 정렬됨
+        
+        # 6. 원본 요양보호사 데이터 찾기
+        best_caregiver = next(
+            (c for c in caregivers if c.caregiver_id == best_match.caregiver_id),
+            None
         )
         
-        logger.info(f"매칭 완료 - 총 {len(matched_caregivers)}명 매칭")
+        if not best_caregiver:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="매칭된 요양보호사 정보를 찾을 수 없습니다"
+            )
+        
+        # 7. 현재 DTO 구조에 맞는 응답 생성
+        response = MatchingResponseDTO(
+            caregiverId=best_caregiver.caregiver_id,
+            availableStartTime=best_caregiver.available_start_time,
+            availableEndTime=best_caregiver.available_end_time,
+            address=best_caregiver.address,
+            location=best_caregiver.location
+        )
+        
+        logger.info(f"매칭 완료 - 선택된 요양보호사: {best_caregiver.caregiver_id} (점수: {best_match.match_score})")
         return response
         
+    except HTTPException:
+        raise  # HTTP 예외는 그대로 전달
     except Exception as e:
         logger.error(f"매칭 처리 중 오류 발생: {str(e)}")
         raise HTTPException(
@@ -271,3 +329,129 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     distance = R * c
     
     return distance
+
+def create_consumer_from_dto(request: MatchingRequestDTO) -> ConsumerForMatching:
+    """
+    MatchingRequestDTO를 ConsumerForMatching으로 변환
+    
+    Args:
+        request: 매칭 요청 DTO
+        
+    Returns:
+        ConsumerForMatching: 매칭용 수요자 모델
+    """
+    try:
+        # 1. 서비스 유형 변환 (문자열 → Enum)
+        service_type = None
+        for st in ServiceType:
+            if st.value == request.serviceType:
+                service_type = st
+                break
+        
+        if not service_type:
+            logger.warning(f"알 수 없는 서비스 유형: {request.serviceType}, 기본값 사용")
+            service_type = ServiceType.VISITING_CARE
+        
+        # 2. 요청 요일 변환 (숫자 리스트 → 문자열)
+        day_mapping = {1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토", 7: "일"}
+        requested_days_str = ",".join([
+            day_mapping.get(day, str(day)) for day in request.requestedDays
+        ])
+        
+        # 3. 선호 시간 변환
+        if request.preferred_time_start and request.preferred_time_end:
+            start_time = request.preferred_time_start.strftime("%H:%M")
+            end_time = request.preferred_time_end.strftime("%H:%M")
+            preferred_time = TimeRange(start=start_time, end=end_time)
+        else:
+            # 기본 시간 설정
+            preferred_time = TimeRange(start="09:00", end="18:00")
+        
+        # 4. 성격 유형 (기본값 사용 - 추후 DTO에 추가 시 확장 가능)
+        personality_type = PersonalityType.GENTLE  # 기본값
+        
+        # 5. ConsumerForMatching 생성
+        consumer = ConsumerForMatching(
+            service_type=service_type,
+            requested_days=requested_days_str,
+            preferred_time=preferred_time,
+            address=request.address,
+            location=request.location,
+            personality_type=personality_type
+        )
+        
+        logger.info(f"DTO → Consumer 변환 완료: {service_type.value}, 요일: {requested_days_str}")
+        return consumer
+        
+    except Exception as e:
+        logger.error(f"DTO → Consumer 변환 오류: {e}")
+        return None
+
+def generate_match_reason(
+    consumer: ConsumerForMatching, 
+    caregiver: CaregiverForMatching, 
+    score: float, 
+    distance_value: float,
+    rank: int
+) -> str:
+    """
+    매칭 이유 생성
+    
+    Args:
+        consumer: 수요자 정보
+        caregiver: 요양보호사 정보
+        score: 매칭 점수
+        distance_value: 거리 값 (km)
+        rank: 순위
+    
+    Returns:
+        str: 매칭 이유 설명
+    """
+    try:
+        reasons = []
+        
+        # 순위 정보
+        rank_desc = f"{rank}순위"
+        reasons.append(rank_desc)
+        
+        # 거리 정보
+        if distance_value < 5.0:
+            distance_desc = f"매우 가까운 거리 ({distance_value}km)"
+        elif distance_value < 10.0:
+            distance_desc = f"가까운 거리 ({distance_value}km)"
+        elif distance_value < 20.0:
+            distance_desc = f"적절한 거리 ({distance_value}km)"
+        else:
+            distance_desc = f"거리 {distance_value}km"
+        reasons.append(distance_desc)
+        
+        # 서비스 유형 일치
+        if consumer.service_type == caregiver.service_type:
+            reasons.append(f"서비스 유형 일치 ({consumer.service_type.value})")
+        
+        # 시간대 호환성
+        consumer_time_desc = f"{consumer.preferred_time.start}-{consumer.preferred_time.end}"
+        caregiver_time_desc = f"{caregiver.available_times.start}-{caregiver.available_times.end}"
+        reasons.append(f"시간대 호환 (요청: {consumer_time_desc}, 가능: {caregiver_time_desc})")
+        
+        # 요일 호환성
+        if consumer.requested_days and caregiver.closed_days:
+            reasons.append("요일 호환성 확인")
+        
+        # 경력 정보 (있는 경우)
+        if caregiver.career_years > 0:
+            if caregiver.career_years >= 5:
+                reasons.append(f"풍부한 경력 ({caregiver.career_years}년)")
+            elif caregiver.career_years >= 3:
+                reasons.append(f"충분한 경력 ({caregiver.career_years}년)")
+            else:
+                reasons.append(f"경력 {caregiver.career_years}년")
+        
+        # 최종 점수
+        reasons.append(f"매칭 점수 {score}점")
+        
+        return " | ".join(reasons)
+        
+    except Exception as e:
+        logger.warning(f"매칭 이유 생성 오류: {e}")
+        return f"{rank}순위 | 거리 {distance_value}km | 점수 {score}점"

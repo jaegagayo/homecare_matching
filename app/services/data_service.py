@@ -8,8 +8,8 @@ from typing import List, Optional
 import logging
 
 from ..dto.matching import MatchingRequestDTO
-from ..database.repository import ServiceRequestRepository, CaregiverRepository
-from ..database.models import ServiceRequestModel, CaregiverModel
+from ..database.repository import CaregiverRepository
+from ..database.models import CaregiverModel
 
 logger = logging.getLogger(__name__)
 
@@ -18,34 +18,10 @@ class MatchingDataService:
     
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.service_request_repo = ServiceRequestRepository(db)
         self.caregiver_repo = CaregiverRepository(db)
     
-    async def get_consumer_data(self, request_dto: MatchingRequestDTO) -> Optional[ServiceRequestModel]:
-        """
-        DTO에서 서비스 요청 ID를 사용하여 전체 수요자 데이터 조회
-        
-        Args:
-            request_dto: 매칭 요청 DTO
-            
-        Returns:
-            ServiceRequestModel: 서비스 요청 전체 정보 (사용자 정보 포함)
-        """
-        try:
-            service_request = await self.service_request_repo.get_by_id(
-                request_dto.serviceRequestId
-            )
-            
-            if not service_request:
-                logger.warning(f"서비스 요청을 찾을 수 없음: {request_dto.serviceRequestId}")
-                return None
-            
-            logger.info(f"수요자 데이터 조회 완료: {service_request.service_request_id}")
-            return service_request
-            
-        except Exception as e:
-            logger.error(f"수요자 데이터 조회 오류: {e}")
-            return None
+    # ServiceRequest 조회는 더 이상 필요 없음 - DTO에서 직접 사용
+    # async def get_consumer_data는 제거됨
     
     async def get_available_caregivers(self, request_dto: MatchingRequestDTO) -> List[CaregiverModel]:
         """
@@ -101,40 +77,8 @@ class MatchingDataService:
 class DataValidationService:
     """데이터 검증 서비스"""
     
-    @staticmethod
-    def validate_service_request_data(service_request: ServiceRequestModel) -> bool:
-        """
-        서비스 요청 데이터의 완전성 검증
-        
-        Args:
-            service_request: 서비스 요청 모델
-            
-        Returns:
-            bool: 데이터가 유효한지 여부
-        """
-        try:
-            # 필수 필드 검사
-            if not service_request.service_request_id:
-                logger.error("서비스 요청 ID가 없음")
-                return False
-            
-            if not service_request.location or len(service_request.location) != 2:
-                logger.error("위치 정보가 유효하지 않음")
-                return False
-            
-            if not service_request.service_type:
-                logger.error("서비스 유형이 없음")
-                return False
-            
-            if not service_request.requested_days:
-                logger.error("요청 요일이 없음")
-                return False
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"서비스 요청 데이터 검증 오류: {e}")
-            return False
+    # ServiceRequest 검증은 더 이상 필요 없음 - DTO에서 직접 사용
+    # validate_service_request_data는 제거됨
     
     @staticmethod
     def validate_caregiver_data(caregiver: CaregiverModel) -> bool:
