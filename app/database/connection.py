@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # 환경 변수에서 데이터베이스 URL 가져오기
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql+asyncpg://postgres:password@localhost:5432/homecare_db"
+    "postgresql+asyncpg://homecare_user:homecare_password@postgres:5432/homecare_db"  # Docker Compose 설정과 일치
 )
 
 # SQLAlchemy 엔진 생성
