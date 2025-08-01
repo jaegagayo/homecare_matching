@@ -54,6 +54,16 @@ async def get_db() -> AsyncSession:
         finally:
             await session.close()
 
+async def create_tables():
+    """테이블 생성"""
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("데이터베이스 테이블 생성 완료")
+    except Exception as e:
+        logger.error(f"데이터베이스 테이블 생성 실패: {e}")
+        raise
+
 async def init_db():
     """데이터베이스 연결 초기화"""
     try:

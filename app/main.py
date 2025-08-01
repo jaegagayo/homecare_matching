@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import logging
 from .api.matching import router
-from .database.connection import init_db, close_db
+from .database.connection import init_db, close_db, create_tables
+from .database import models  # 모델들을 import해서 Base.metadata에 등록
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -14,9 +15,10 @@ async def lifespan(app: FastAPI):
     logger.info("애플리케이션 시작 - 데이터베이스 연결 초기화")
     try:
         await init_db()
-        logger.info("데이터베이스 연결 완료")
+        await create_tables()
+        logger.info("데이터베이스 연결 및 테이블 생성 완료")
     except Exception as e:
-        logger.error(f"데이터베이스 연결 실패: {e}")
+        logger.error(f"데이터베이스 초기화 실패: {e}")
         # 실제 운영에서는 애플리케이션을 종료하거나 다른 처리 필요
     
     yield
