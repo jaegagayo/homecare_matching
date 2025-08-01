@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from typing import List
 import logging
+import math
 
 # 스키마 import
 from ..dto.matching import MatchingRequestDTO, MatchingResponseDTO
@@ -30,15 +31,17 @@ async def recommend_matching(request: MatchingRequestDTO):
         # 매칭 알고리즘 실행
         matched_caregivers = await execute_matching_algorithm(request.consumer, request.caregivers)
         
-        # 매칭 점수 기준으로 정렬 (높은 점수 순)
-        matched_caregivers.sort(key=lambda x: x.match_score or 0, reverse=True)
-        
         # 응답 생성
+        if matched_caregivers:
+            message = f"최적의 요양보호사 1명이 매칭되었습니다."
+        else:
+            message = "조건에 맞는 요양보호사가 없습니다."
+            
         response = MatchingResponseDTO(
             matched_caregivers=matched_caregivers,
             total_matches=len(matched_caregivers),
             status="success",
-            message=f"{len(matched_caregivers)}명의 요양보호사가 매칭되었습니다."
+            message=message
         )
         
         logger.info(f"매칭 완료 - 총 {len(matched_caregivers)}명 매칭")
@@ -56,7 +59,7 @@ async def execute_matching_algorithm(
     caregivers: List[CaregiverForMatching]
 ) -> List[MatchedCaregiver]:
     """
-    고도화된 매칭 알고리즘 실행
+    매칭 알고리즘
     
     1단계: 필터링 (필수 조건)
     - 서비스 유형 일치
@@ -65,27 +68,32 @@ async def execute_matching_algorithm(
     
     2단계: 점수 선호도 계산
     - 거리 매칭 (가중치 1.0)
-    - 성격 매칭 (가중치 0)
+    - 성격 매칭 (가중치 0) *MVP에서 미구현*
+    - 경력 매칭 (가중치 0) *MVP에서 미구현*
+    
+    결과: 가장 높은 점수를 획득한 1명의 요양보호사 반환
     """
-    matched_caregivers = []
-    
+    # 1단계: 필터링
+    filtered_caregivers = []
     for caregiver in caregivers:
-        # 1단계: 필터링 검사
-        if not pass_filtering_criteria(consumer, caregiver):
-            continue  # 필터링 통과 못하면 제외
-        
-        # 2단계: 점수 계산
-        preference_score = calculate_preference_score(consumer, caregiver)
-        
-        matched_caregiver = MatchedCaregiver(
-            caregiver_id=caregiver.caregiver_id,
-            match_score=round(preference_score, 2),
-            reason=generate_match_reason(consumer, caregiver, preference_score)
-        )
-        matched_caregivers.append(matched_caregiver)
+        if pass_filtering_criteria(consumer, caregiver):
+            filtered_caregivers.append(caregiver)
     
-    logger.info(f"필터링 통과: {len(matched_caregivers)}명")
-    return matched_caregivers
+    logger.info(f"필터링 통과: {len(filtered_caregivers)}명")
+    
+    if not filtered_caregivers:
+        return []  # 필터링 통과한 요양보호사가 없음
+    
+    # 2단계: 거리 기반 점수 계산 및 정렬
+    matched_caregivers = calculate_distance_based_scores(consumer, filtered_caregivers)
+    
+    # 가장 높은 점수 1명만 반환
+    if matched_caregivers:
+        best_match = matched_caregivers[0]  # 이미 점수 순으로 정렬됨
+        logger.info(f"최종 매칭: {best_match.caregiver_id} (점수: {best_match.match_score})")
+        return [best_match]
+    
+    return []
 
 def pass_filtering_criteria(consumer: ConsumerForMatching, caregiver: CaregiverForMatching) -> bool:
     """
@@ -160,123 +168,106 @@ def time_to_minutes(time_str: str) -> int:
     except:
         return 0
 
-def calculate_preference_score(consumer: ConsumerForMatching, caregiver: CaregiverForMatching) -> float:
+def calculate_distance_based_scores(consumer: ConsumerForMatching, caregivers: List[CaregiverForMatching]) -> List[MatchedCaregiver]:
     """
-    점수 선호도 계산
-    - 거리 매칭: 가중치 0.6
-    - 성격 매칭: 가중치 0.4
-    총점: 10점 만점
+    거리 기반 점수 계산 및 매칭
+    - 거리 값 계산 후 정렬
+    - 상위 5명까지 점수 부여 (10, 8, 6, 4, 2)
+    - 점수 순으로 정렬하여 반환
     """
+    caregiver_distances = []
     
-    # 1. 거리 점수 계산 (0-10점)
-    distance_score = calculate_distance_score(consumer.location, caregiver.base_location)
+    # 모든 요양보호사에 대해 거리 값 계산
+    for caregiver in caregivers:
+        distance_value = calculate_distance_value(consumer.location, caregiver.base_location)
+        caregiver_distances.append({
+            'caregiver': caregiver,
+            'distance_value': distance_value
+        })
     
-    # 2. 성격 점수 계산 (0-10점)
-    personality_score = calculate_personality_score(consumer.personality_type, caregiver.personality_type)
+    # 거리 값으로 정렬 (거리가 가까운 순서대로)
+    caregiver_distances.sort(key=lambda x: x['distance_value'])
     
-    # 3. 가중치 적용하여 총점 계산
-    total_score = (distance_score * 0.6) + (personality_score * 0.4)
+    # 상위 5명까지 점수 부여
+    score_mapping = [10, 8, 6, 4, 2]  # 1위~5위 점수
+    matched_caregivers = []
     
-    return min(total_score, 10.0)
+    for i, item in enumerate(caregiver_distances):
+        if i < len(score_mapping):
+            score = score_mapping[i]
+        else:
+            score = 0  # 6위 이하는 0점
+        
+        caregiver = item['caregiver']
+        matched_caregiver = MatchedCaregiver(
+            caregiver_id=caregiver.caregiver_id,
+            match_score=float(score),
+            reason=generate_match_reason(consumer, caregiver, score, item['distance_value'], i + 1)
+        )
+        matched_caregivers.append(matched_caregiver)
+    
+    # 점수 순으로 정렬 (높은 점수 순)
+    matched_caregivers.sort(key=lambda x: x.match_score, reverse=True)
+    
+    return matched_caregivers
 
-def calculate_distance_score(consumer_location: str, caregiver_location: str) -> float:
+def calculate_distance_value(consumer_location: List[float], caregiver_location: List[float]) -> float:
     """
-    거리 점수 계산 (0-10점)
-    점수 단계: 10, 8, 6, 4, 2, 0
+    GPS 좌표 기반 거리 계산 (Haversine 공식)
+    
+    Args:
+        consumer_location: 수요자 위치 [위도, 경도]
+        caregiver_location: 요양보호사 위치 [위도, 경도]
+    
+    Returns:
+        두 지점 간의 거리 (km)
     """
     try:
-        # 간단한 문자열 기반 유사도 계산
-        consumer_parts = set(consumer_location.replace(',', ' ').split())
-        caregiver_parts = set(caregiver_location.replace(',', ' ').split())
+        if not consumer_location or not caregiver_location or len(consumer_location) != 2 or len(caregiver_location) != 2:
+            logger.warning("잘못된 좌표 형식")
+            return 999.0  # 매우 큰 거리 값
         
-        if not consumer_parts or not caregiver_parts:
-            return 2.0  # 기본값
+        lat1, lon1 = consumer_location
+        lat2, lon2 = caregiver_location
         
-        # 공통 키워드 비율 계산
-        common_parts = consumer_parts.intersection(caregiver_parts)
-        total_parts = consumer_parts.union(caregiver_parts)
-        similarity_ratio = len(common_parts) / len(total_parts) if total_parts else 0
+        # Haversine 공식을 사용한 두 GPS 좌표 간 거리 계산
+        distance_km = haversine_distance(lat1, lon1, lat2, lon2)
         
-        # 유사도에 따른 점수 매핑 (6단계)
-        if similarity_ratio >= 0.8:
-            return 10.0  # 매우 가까움
-        elif similarity_ratio >= 0.6:
-            return 8.0   # 가까움
-        elif similarity_ratio >= 0.4:
-            return 6.0   # 보통
-        elif similarity_ratio >= 0.2:
-            return 4.0   # 약간 멀음
-        elif similarity_ratio > 0:
-            return 2.0   # 멀음
-        else:
-            return 0.0   # 매우 멀음
+        return round(distance_km, 2)
             
     except Exception as e:
-        logger.warning(f"거리 점수 계산 오류: {e}")
-        return 2.0
+        logger.warning(f"거리 값 계산 오류: {e}")
+        return 999.0
 
-def calculate_personality_score(consumer_personality: PersonalityType, caregiver_personality: PersonalityType) -> float:
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
-    성격 점수 계산 (0-10점)
-    점수 단계: 10, 8, 6, 4, 2, 0
+    Haversine 공식을 사용하여 두 GPS 좌표 간의 거리를 계산
+    
+    Args:
+        lat1, lon1: 첫 번째 지점의 위도, 경도
+        lat2, lon2: 두 번째 지점의 위도, 경도
+    
+    Returns:
+        두 지점 간의 거리 (km)
     """
-    # 성격 호환성 매트릭스 (6단계 점수)
-    compatibility_matrix = {
-        PersonalityType.GENTLE: {
-            PersonalityType.GENTLE: 10.0,   # 완벽 매칭
-            PersonalityType.CALM: 8.0,      # 우수 매칭
-            PersonalityType.CHEERFUL: 6.0,  # 좋은 매칭
-            PersonalityType.ACTIVE: 4.0     # 보통 매칭
-        },
-        PersonalityType.ACTIVE: {
-            PersonalityType.ACTIVE: 10.0,
-            PersonalityType.CHEERFUL: 8.0,
-            PersonalityType.GENTLE: 4.0,
-            PersonalityType.CALM: 2.0       # 어려운 매칭
-        },
-        PersonalityType.CALM: {
-            PersonalityType.CALM: 10.0,
-            PersonalityType.GENTLE: 8.0,
-            PersonalityType.CHEERFUL: 6.0,
-            PersonalityType.ACTIVE: 2.0
-        },
-        PersonalityType.CHEERFUL: {
-            PersonalityType.CHEERFUL: 10.0,
-            PersonalityType.ACTIVE: 8.0,
-            PersonalityType.GENTLE: 6.0,
-            PersonalityType.CALM: 6.0
-        }
-    }
+    # 지구의 반지름 (km)
+    R = 6371.0
     
-    return compatibility_matrix.get(consumer_personality, {}).get(caregiver_personality, 4.0)
-
-def generate_match_reason(consumer: ConsumerForMatching, caregiver: CaregiverForMatching, score: float) -> str:
-    """매칭 이유 생성"""
-    reasons = []
+    # 위도, 경도를 라디안으로 변환
+    lat1_rad = math.radians(lat1)
+    lon1_rad = math.radians(lon1)
+    lat2_rad = math.radians(lat2)
+    lon2_rad = math.radians(lon2)
     
-    # 서비스 유형 (필터링 통과했으므로 항상 일치)
-    reasons.append(f"서비스 유형 일치({consumer.service_type.value})")
+    # 위도, 경도 차이 계산
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
     
-    # 거리 점수 분석
-    distance_score = calculate_distance_score(consumer.location, caregiver.base_location)
-    if distance_score >= 8:
-        reasons.append("지역 매우 근접")
-    elif distance_score >= 6:
-        reasons.append("지역 근접")
-    elif distance_score >= 4:
-        reasons.append("지역 접근성 양호")
+    # Haversine 공식
+    a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     
-    # 성격 점수 분석
-    personality_score = calculate_personality_score(consumer.personality_type, caregiver.personality_type)
-    if personality_score >= 8:
-        reasons.append("성격 매칭 우수")
-    elif personality_score >= 6:
-        reasons.append("성격 매칭 양호")
+    # 거리 계산
+    distance = R * c
     
-    # 경력 정보 추가
-    if caregiver.career_years >= 5:
-        reasons.append("풍부한 경력")
-    elif caregiver.career_years >= 2:
-        reasons.append("적절한 경력")
-    
-    return ", ".join(reasons) if reasons else f"매칭 점수 {score:.1f}점"
+    return distance

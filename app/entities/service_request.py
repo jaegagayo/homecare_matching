@@ -9,7 +9,8 @@ class ServiceRequest(BaseModel):
     id: Optional[int] = Field(None, description="DB 자동생성 ID")
     serviceRequestId: str = Field(..., description="서비스 요청 ID (UUID)")
     user: Optional[User] = Field(None, description="연결된 사용자")
-    location: str = Field(..., min_length=1, description="서비스 요청 위치")
+    address: str = Field(..., description="서비스 요청 주소")
+    location: List[float] = Field(..., description="서비스 요청 위치 (위도, 경도)")
     preferred_time_start: Optional[datetime] = Field(None, description="선호 시작 시간")
     preferred_time_end: Optional[datetime] = Field(None, description="선호 종료 시간")
     serviceType: str = Field(..., description="서비스 유형 (String)")
@@ -23,6 +24,23 @@ class ServiceRequest(BaseModel):
         uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
         if not re.match(uuid_pattern, v, re.IGNORECASE):
             raise ValueError('UUID 형식이 올바르지 않습니다')
+        return v
+    
+    @validator('location')
+    def validate_coordinates(cls, v):
+        if not isinstance(v, list) or len(v) != 2:
+            raise ValueError('위치는 [위도, 경도] 형태의 리스트여야 합니다')
+        
+        latitude, longitude = v
+        if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+            raise ValueError('위도와 경도는 숫자여야 합니다')
+        
+        if not -90 <= latitude <= 90:
+            raise ValueError('위도는 -90에서 90 사이의 값이어야 합니다')
+        
+        if not -180 <= longitude <= 180:
+            raise ValueError('경도는 -180에서 180 사이의 값이어야 합니다')
+        
         return v
     
     @validator('requestedDays')
