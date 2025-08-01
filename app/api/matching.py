@@ -3,14 +3,14 @@ from typing import List
 import logging
 
 # 스키마 import
-from schemas.matching import (
-    MatchingRequestDTO, 
-    MatchingResponseDTO, 
+from ..dto.matching import MatchingRequestDTO, MatchingResponseDTO
+from ..models.matching import (
     MatchedCaregiver,
-    ConsumerForMatching,
+    ConsumerForMatching, 
     CaregiverForMatching,
-    PersonalityType
+    TimeRange
 )
+from ..entities.base import PersonalityType
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -64,8 +64,8 @@ async def execute_matching_algorithm(
     - 시간대 호환성 (근무시간 vs 선호시간)
     
     2단계: 점수 선호도 계산
-    - 거리 매칭 (가중치 0.6)
-    - 성격 매칭 (가중치 0.4)
+    - 거리 매칭 (가중치 1.0)
+    - 성격 매칭 (가중치 0)
     """
     matched_caregivers = []
     
