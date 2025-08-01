@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 
 class ServiceRequestDTO(BaseModel):
     """서비스 요청 정보 DTO"""
@@ -10,7 +10,7 @@ class ServiceRequestDTO(BaseModel):
     preferred_time_start: Optional[datetime] = Field(None, description="서비스 시작 시간")
     preferred_time_end: Optional[datetime] = Field(None, description="서비스 종료 시간")
     serviceType: str = Field(..., description="요청하는 요양서비스 유형")
-    requestedDays: List[int] = Field(..., description="요청 요일들")
+    requestedDays: List[date] = Field(..., description="요청 일들")
     # TODO : 성격 정보는 MVP 단계에서 미구현
     # personalityType: str = Field(..., description="성격 정보")
     
@@ -30,6 +30,22 @@ class ServiceRequestDTO(BaseModel):
             raise ValueError('경도는 -180에서 180 사이의 값이어야 합니다')
         
         return v
+    
+    @validator('requestedDays')
+    def validate_requested_days(cls, v):
+        if not v:
+            raise ValueError('요청 일들이 비어있습니다')
+        
+        # 중복 날짜 제거 및 정렬
+        unique_dates = sorted(list(set(v)))
+        
+        # 과거 날짜 확인 (선택적 - 필요에 따라 주석 해제)
+        # today = date.today()
+        # past_dates = [d for d in unique_dates if d < today]
+        # if past_dates:
+        #     raise ValueError(f'과거 날짜는 요청할 수 없습니다: {past_dates}')
+        
+        return unique_dates
 
 class CaregiverForMatchingDTO(BaseModel):
     """매칭용 요양보호사 정보 DTO"""
