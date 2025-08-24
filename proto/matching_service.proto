@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package matching;
+
+// 매칭 서비스 정의
+service MatchingService {
+  // 요양보호사 매칭 요청
+  rpc GetMatchingRecommendations(MatchingRequest) returns (MatchingResponse);
+  
+  // 서비스 헬스체크
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// 매칭 요청 메시지
+message MatchingRequest {
+  ServiceRequest service_request = 1;
+  repeated CaregiverForMatching candidate_caregivers = 2;
+}
+
+// 서비스 요청 정보 (DB 스키마 기반)
+message ServiceRequest {
+  string service_request_id = 1;
+  string consumer_id = 2;
+  string service_address = 3;
+  string address_type = 4;
+  Location location = 5;
+  string preferred_time = 6;
+  string duration = 7;
+  string service_type = 8;
+  string request_status = 9;
+  string request_date = 10;
+  string additional_information = 11;
+}
+
+// 위치 정보
+message Location {
+  double latitude = 1;
+  double longitude = 2;
+}
+
+// 매칭용 요양보호사 정보 (DB 스키마 기반)
+message CaregiverForMatching {
+  string caregiver_id = 1;
+  string user_id = 2;
+  string available_times = 3;
+  string address = 4;
+  string service_type = 5;
+  string days_off = 6;
+  string career = 7;
+  string korean_proficiency = 8;
+  bool is_accompany_outing = 9;
+  string self_introduction = 10;
+  bool is_verified = 11;
+  Location base_location = 12;
+  int32 career_years = 13;
+  // 선호도 정보 (CaregiverPreference 테이블)
+  string work_days = 14;
+  string work_area = 15;
+  string transportation = 16;
+  string supported_conditions = 17;
+}
+
+// 매칭 응답 메시지
+message MatchingResponse {
+  repeated MatchedCaregiver matched_caregivers = 1;
+  int32 total_matches = 2;
+  string processing_time_ms = 3;
+  bool success = 4;
+  string error_message = 5;
+}
+
+// 매칭된 요양보호사 정보
+message MatchedCaregiver {
+  string caregiver_id = 1;
+  string available_times = 2;
+  string address = 3;
+  Location location = 4;
+  double match_score = 5;
+  string match_reason = 6;
+  double distance_km = 7;
+  int32 estimated_travel_time = 8;
+  string career = 9;
+  string service_type = 10;
+  bool is_verified = 11;
+}
+
+// 헬스체크 요청/응답
+message HealthCheckRequest {
+  string service = 1;
+}
+
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+  ServingStatus status = 1;
+  string message = 2;
+}
