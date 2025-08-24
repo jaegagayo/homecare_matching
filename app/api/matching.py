@@ -67,12 +67,16 @@ async def recommend_matching(request: MatchingRequestDTO):
             if caregiver_dto:
                 matched_dto = MatchedCaregiverDTO(
                     caregiverId=caregiver_dto.caregiverId,
-                    availableStartTime=caregiver_dto.availableStartTime,
-                    availableEndTime=caregiver_dto.availableEndTime,
-                    address=caregiver_dto.baseAddress,
+                    availableTimes=caregiver_dto.availableTimes,
+                    address=caregiver_dto.address,
                     location=caregiver_dto.baseLocation,
                     matchScore=match.match_score,
-                    matchReason=match.reason
+                    matchReason=match.reason,
+                    distanceKm=getattr(match, 'distance_km', None),
+                    estimatedTravelTime=getattr(match, 'estimated_travel_time', None),
+                    career=caregiver_dto.career,
+                    serviceType=caregiver_dto.serviceType,
+                    isVerified=caregiver_dto.isVerified
                 )
                 matched_caregiver_dtos.append(matched_dto)
         
@@ -218,7 +222,11 @@ def convert_dto_caregivers_to_matching_models(caregiver_dtos: List[CaregiverForM
             caregiver_matching = CaregiverForMatching(
                 caregiver_id=dto.caregiverId,
                 base_location=dto.baseLocation,
-                career_years=dto.careerYears
+                career_years=dto.careerYears,
+                available_times=dto.availableTimes,
+                service_type=dto.serviceType,
+                days_off=dto.daysOff,
+                work_area=dto.workArea
             )
             matching_caregivers.append(caregiver_matching)
         
