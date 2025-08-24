@@ -43,7 +43,7 @@ async def recommend_matching(request: MatchingRequestDTO):
         logger.info(f"매칭 대상 요양보호사: {len(caregivers_matching)}명")
         
         # 3. 거리 기반 매칭 알고리즘 실행
-        service_location = request.serviceRequest.location
+        service_location = request.serviceRequest.location.get_coordinates()
         matched_caregivers = execute_distance_matching(service_location, caregivers_matching)
         
         if not matched_caregivers:
@@ -124,7 +124,8 @@ def execute_distance_matching(service_location: List[float], caregivers: List[Ca
     
     # 모든 요양보호사에 대해 거리 계산
     for caregiver in caregivers:
-        distance_km = calculate_haversine_distance(service_location, caregiver.base_location)
+        caregiver_location = caregiver.base_location.get_coordinates()
+        distance_km = calculate_haversine_distance(service_location, caregiver_location)
         caregiver_distances.append({
             'caregiver': caregiver,
             'distance_km': distance_km
