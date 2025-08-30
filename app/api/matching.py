@@ -43,7 +43,7 @@ async def recommend_matching(request: MatchingRequestDTO):
         logger.info(f"매칭 대상 요양보호사: {len(caregivers_matching)}명")
         
         # 3. 거리 기반 매칭 알고리즘 실행
-        service_location = request.serviceRequest.location
+        service_location = request.serviceRequest.location.get_coordinates()
         matched_caregivers = execute_distance_matching(service_location, caregivers_matching)
         
         if not matched_caregivers:
@@ -67,12 +67,16 @@ async def recommend_matching(request: MatchingRequestDTO):
             if caregiver_dto:
                 matched_dto = MatchedCaregiverDTO(
                     caregiverId=caregiver_dto.caregiverId,
-                    availableStartTime=caregiver_dto.availableStartTime,
-                    availableEndTime=caregiver_dto.availableEndTime,
-                    address=caregiver_dto.baseAddress,
+                    availableTimes=caregiver_dto.availableTimes,
+                    address=caregiver_dto.address,
                     location=caregiver_dto.baseLocation,
                     matchScore=match.match_score,
-                    matchReason=match.reason
+                    matchReason=match.reason,
+                    distanceKm=getattr(match, 'distance_km', None),
+                    estimatedTravelTime=getattr(match, 'estimated_travel_time', None),
+                    career=caregiver_dto.career,
+                    serviceType=caregiver_dto.serviceType,
+                    isVerified=caregiver_dto.isVerified
                 )
                 matched_caregiver_dtos.append(matched_dto)
         
@@ -120,7 +124,8 @@ def execute_distance_matching(service_location: List[float], caregivers: List[Ca
     
     # 모든 요양보호사에 대해 거리 계산
     for caregiver in caregivers:
-        distance_km = calculate_haversine_distance(service_location, caregiver.base_location)
+        caregiver_location = caregiver.base_location.get_coordinates()
+        distance_km = calculate_haversine_distance(service_location, caregiver_location)
         caregiver_distances.append({
             'caregiver': caregiver,
             'distance_km': distance_km
@@ -218,7 +223,11 @@ def convert_dto_caregivers_to_matching_models(caregiver_dtos: List[CaregiverForM
             caregiver_matching = CaregiverForMatching(
                 caregiver_id=dto.caregiverId,
                 base_location=dto.baseLocation,
-                career_years=dto.careerYears
+                career_years=dto.careerYears,
+                available_times=dto.availableTimes,
+                service_type=dto.serviceType,
+                days_off=dto.daysOff,
+                work_area=dto.workArea
             )
             matching_caregivers.append(caregiver_matching)
         
