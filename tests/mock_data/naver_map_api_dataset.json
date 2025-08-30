@@ -1,0 +1,209 @@
+
+{
+  "geocode": {
+    "경기도 성남시 분당구 불정로 6": {
+      "status": "OK",
+      "meta": { "totalCount": 1, "page": 1, "count": 1 },
+      "addresses": [
+        {
+          "roadAddress": "경기도 성남시 분당구 불정로 6",
+          "jibunAddress": "경기도 성남시 분당구 정자동 178-1",
+          "x": "127.1052133",
+          "y": "37.3595122",
+          "addressElements": [
+            {
+                "types": ["SIDO"],
+                "longName": "경기도",
+                "shortName": "경기도",
+                "code": ""
+            },
+            {
+                "types": ["SIGUGUN"],
+                "longName": "성남시 분당구",
+                "shortName": "성남시 분당구",
+                "code": ""
+            },
+            {
+                "types": ["DONGMYUN"],
+                "longName": "정자동",
+                "shortName": "정자동",
+                "code": ""
+            },
+            {
+                "types": ["RI"],
+                "longName": "",
+                "shortName": "",
+                "code": ""
+            },
+            {
+                "types": ["ROAD_NAME"],
+                "longName": "불정로",
+                "shortName": "불정로",
+                "code": ""
+            },
+            {
+                "types": ["BUILDING_NUMBER"],
+                "longName": "6",
+                "shortName": "6",
+                "code": ""
+            },
+            {
+                "types": ["BUILDING_NAME"],
+                "longName": "NAVER Green Factory",
+                "shortName": "NAVER Green Factory",
+                "code": ""
+            },
+            {
+                "types": ["LAND_NUMBER"],
+                "longName": "178-1",
+                "shortName": "178-1",
+                "code": ""
+            },
+            {
+                "types": ["POSTAL_CODE"],
+                "longName": "13561",
+                "shortName": "13561",
+                "code": ""
+            }
+          ]
+        }
+      ]
+    },
+    "서울시청": {
+      "status": "OK",
+      "meta": { "totalCount": 1, "page": 1, "count": 1 },
+      "addresses": [
+        {
+          "roadAddress": "서울특별시 중구 세종대로 110",
+          "jibunAddress": "서울특별시 중구 태평로1가 31",
+          "x": "126.978652",
+          "y": "37.566826",
+          "addressElements": [
+            {
+                "types": ["SIDO"],
+                "longName": "서울특별시",
+                "shortName": "서울특별시",
+                "code": ""
+            },
+            {
+                "types": ["SIGUGUN"],
+                "longName": "중구",
+                "shortName": "중구",
+                "code": ""
+            },
+            {
+                "types": ["DONGMYUN"],
+                "longName": "태평로1가",
+                "shortName": "태평로1가",
+                "code": ""
+            },
+            {
+                "types": ["RI"],
+                "longName": "",
+                "shortName": "",
+                "code": ""
+            },
+            {
+                "types": ["ROAD_NAME"],
+                "longName": "세종대로",
+                "shortName": "세종대로",
+                "code": ""
+            },
+            {
+                "types": ["BUILDING_NUMBER"],
+                "longName": "110",
+                "shortName": "110",
+                "code": ""
+            },
+            {
+                "types": ["BUILDING_NAME"],
+                "longName": "서울특별시청",
+                "shortName": "서울특별시청",
+                "code": ""
+            },
+            {
+                "types": ["LAND_NUMBER"],
+                "longName": "31",
+                "shortName": "31",
+                "code": ""
+            },
+            {
+                "types": ["POSTAL_CODE"],
+                "longName": "04524",
+                "shortName": "04524",
+                "code": ""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "direction": {
+    "127.1058342,37.359708_to_129.075986,35.179470": {
+      "code": 0,
+      "message": "성공",
+      "currentDateTime": "2025-08-30T16:05:30",
+      "route": {
+        "trafast": [
+            {
+                "summary": {
+                    "start": {
+                        "location": [
+                            127.1058342,
+                            37.359708
+                        ]
+                    },
+                    "goal": {
+                        "location": [
+                            129.075986,
+                            35.17947
+                        ],
+                        "dir": 3
+                    },
+                    "distance": 382098,
+                    "duration": 13918021,
+                    "etaServiceType": 1,
+                    "departureTime": "2025-08-30T16:05:30",
+                    "tollFare": 18300,
+                    "taxiFare": 310800,
+                    "fuelPrice": 28659
+                }
+            }
+        ]
+      }
+    },
+    "126.978652,37.566826_to_127.1052133,37.3595122": {
+      "code": 0,
+      "message": "성공",
+      "currentDateTime": "2025-08-30T16:10:00",
+      "route": {
+        "trafast": [
+            {
+                "summary": {
+                    "start": {
+                        "location": [
+                            126.978652,
+                            37.566826
+                        ]
+                    },
+                    "goal": {
+                        "location": [
+                            127.1052133,
+                            37.3595122
+                        ],
+                        "dir": 2
+                    },
+                    "distance": 25000,
+                    "duration": 3600000,
+                    "etaServiceType": 1,
+                    "departureTime": "2025-08-30T16:10:00",
+                    "tollFare": 1200,
+                    "taxiFare": 25000,
+                    "fuelPrice": 2000
+                }
+            }
+        ]
+      }
+    }
+  }
+}
