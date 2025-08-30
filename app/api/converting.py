@@ -75,41 +75,71 @@ async def convert_non_structured_data_to_structured_data(
 def create_conversion_prompt(non_structured_data: str) -> str:
     """LLM을 위한 프롬프트 생성"""
     
-    prompt = f"""
-다음 비정형 텍스트를 분석하여 요양보호사의 근무조건을 구조화된 JSON 형태로 변환해주세요.
+    prompt = f"""당신은 요양보호사 근무조건 분석 전문가입니다. 비정형 텍스트를 정확한 구조화된 데이터로 변환하는 것이 목표입니다.
 
-입력 텍스트:
+## 작업 지시사항
+다음 텍스트에서 요양보호사의 근무조건을 추출하여 JSON 형식으로 변환하세요.
+
+## 입력 텍스트:
 {non_structured_data}
 
-다음 JSON 스키마에 맞춰 응답해주세요. 정보가 없는 필드는 null 또는 빈 배열로 설정하세요:
-
+## 출력 형식 (JSON):
+```json
 {{
-  "day_of_week": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"],
-  "work_start_time": "HH:MM",
-  "work_end_time": "HH:MM", 
-  "work_min_time": 숫자(시간),
-  "work_max_time": 숫자(시간),
-  "available_time": 숫자(시간),
-  "work_area": "지역명",
-  "transportation": "교통수단",
-  "lunch_break": 숫자(분),
-  "buffer_time": 숫자(분),
-  "supported_conditions": ["DEMENTIA", "BEDRIDDEN"],
-  "preferred_min_age": 숫자,
-  "preferred_max_age": 숫자,
-  "preferred_gender": "ALL" | "MALE" | "FEMALE",
-  "service_types": ["VISITING_CARE", "VISITING_BATH", "VISITING_NURSING", "DAY_NIGHT_CARE", "RESPITE_CARE", "IN_HOME_SUPPORT"]
+  "day_of_week": [],
+  "work_start_time": null,
+  "work_end_time": null,
+  "work_min_time": null,
+  "work_max_time": null,
+  "available_time": null,
+  "work_area": null,
+  "transportation": null,
+  "lunch_break": null,
+  "buffer_time": null,
+  "supported_conditions": [],
+  "preferred_min_age": null,
+  "preferred_max_age": null,
+  "preferred_gender": null,
+  "service_types": []
 }}
+```
 
-변환 규칙:
-1. 요일: MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY 중 선택
-2. 시간: HH:MM 형식 (24시간제)
-3. 지원 질환: DEMENTIA(치매), BEDRIDDEN(와상) 중 선택
-4. 선호 성별: ALL(무관), MALE(남성), FEMALE(여성) 중 선택  
-5. 서비스 유형: VISITING_CARE(방문요양), VISITING_BATH(방문목욕), VISITING_NURSING(방문간호), DAY_NIGHT_CARE(주야간보호), RESPITE_CARE(단기보호), IN_HOME_SUPPORT(재가요양지원) 중 선택
+## 필드별 규칙:
+- **day_of_week**: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] 중 선택 (다중 선택 가능)
+- **work_start_time/work_end_time**: "HH:MM" 형식 (예: "09:00", "18:00")
+- **work_min_time/work_max_time/available_time**: 시간 단위 정수 (예: 8)
+- **work_area**: 구체적인 지역명 (예: "강남구", "서울시 종로구")
+- **transportation**: 교통수단 (예: "자차", "대중교통", "도보")
+- **lunch_break/buffer_time**: 분 단위 정수 (예: 60, 30)
+- **supported_conditions**: ["DEMENTIA", "BEDRIDDEN"] 중 선택
+- **preferred_min_age/preferred_max_age**: 나이 정수 (예: 65, 85)
+- **preferred_gender**: "ALL", "MALE", "FEMALE" 중 하나
+- **service_types**: ["VISITING_CARE", "VISITING_BATH", "VISITING_NURSING", "DAY_NIGHT_CARE", "RESPITE_CARE", "IN_HOME_SUPPORT"] 중 선택
 
-JSON만 응답하고 다른 설명은 포함하지 마세요.
-"""
+## 변환 예시:
+입력: "월화수 오전 9시부터 오후 6시까지 강남구에서 치매 어르신 방문요양 서비스 가능합니다. 점심시간 1시간 필요하고 자차 이용합니다."
+출력:
+```json
+{{
+  "day_of_week": ["MONDAY", "TUESDAY", "WEDNESDAY"],
+  "work_start_time": "09:00",
+  "work_end_time": "18:00",
+  "work_area": "강남구",
+  "transportation": "자차",
+  "lunch_break": 60,
+  "supported_conditions": ["DEMENTIA"],
+  "service_types": ["VISITING_CARE"]
+}}
+```
+
+## 중요 사항:
+1. 명시되지 않은 정보는 null 또는 빈 배열로 설정
+2. 애매한 표현은 가장 일반적인 해석 적용
+3. 상충되는 정보가 있으면 나중에 언급된 것을 우선
+4. JSON 형식만 응답하고 다른 설명 불포함
+5. 한국어 표현을 영어 enum 값으로 정확히 매핑
+
+응답:"""
     
     return prompt
 
