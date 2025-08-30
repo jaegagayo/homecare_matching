@@ -154,7 +154,7 @@ async def call_openrouter_api(prompt: str) -> Dict[str, Any]:
   }
     
   payload = {
-    "model": "google/gemma-2-9b-it",  # 한국어 LLM 리더보드 참고해서 2가지 모델 선정 후 가격 비교하여 최종 선정
+    "model": "google/gemini-2.5-flash",  # 한국어 LLM 리더보드 참고해서 2가지 모델 선정 후 가격 비교하여 최종 선정
     "messages": [
       {
         "role": "system",
