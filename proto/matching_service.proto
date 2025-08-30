@@ -7,6 +7,9 @@ service MatchingService {
   // 요양보호사 매칭 요청
   rpc GetMatchingRecommendations(MatchingRequest) returns (MatchingResponse);
   
+  // 요양보호사 선호조건 비정형 데이터를 정형 데이터로 변환 요청
+  rpc ConvertNonStructuredDataToStructuredData(ConvertNonStructuredDataToStructuredDataRequest) returns (ConvertNonStructuredDataToStructuredDataResponse);
+
   // 서비스 헬스체크
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
 }
@@ -82,6 +85,45 @@ message MatchedCaregiver {
   string career = 9;
   string service_type = 10;
   bool is_verified = 11;
+}
+
+message ConvertNonStructuredDataToStructuredDataRequest {
+  string non_structured_data = 1;
+}
+
+message ConvertNonStructuredDataToStructuredDataResponse {
+  // 근무 가능 요일 (Set<DayOfWeek> -> repeated string)
+  repeated string day_of_week = 1;
+  
+  // 근무 시간 (LocalTime -> string in HH:MM format)
+  optional string work_start_time = 2;
+  optional string work_end_time = 3;
+  
+  // 근무 시간 범위 (Integer -> optional int32)
+  optional int32 work_min_time = 4;
+  optional int32 work_max_time = 5;
+  optional int32 available_time = 6;
+  
+  // 근무 지역 및 교통수단 (String -> optional string)
+  optional string work_area = 7;
+  optional string transportation = 8;
+  
+  // 휴게 및 버퍼 시간 (Integer -> optional int32)
+  optional int32 lunch_break = 9;
+  optional int32 buffer_time = 10;
+  
+  // 지원 가능 질환 (Set<Disease> -> repeated string)
+  repeated string supported_conditions = 11;
+  
+  // 선호 연령 범위 (Integer -> optional int32)
+  optional int32 preferred_min_age = 12;
+  optional int32 preferred_max_age = 13;
+  
+  // 선호 성별 (PreferredGender -> optional string)
+  optional string preferred_gender = 14;
+  
+  // 서비스 유형 (Set<ServiceType> -> repeated string)
+  repeated string service_types = 15;
 }
 
 // 헬스체크 요청/응답
