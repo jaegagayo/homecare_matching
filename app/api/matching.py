@@ -3,10 +3,11 @@
 
 매칭 프로세스:
 1. 수요자 신청 정보로 서비스 요청 위치 DTO 수신
-2. 서비스 요청 위치 반경 15km 내 요양보호사를 근거리 후보군으로 메모리에 로드
-3. 근거리 후보군 내 요양보호사의 요구조건 비정형 텍스트를 LLM으로 선호조건 변환 후 필터링하여 조건부합 후보군 생성
-4. 조건부합 후보군 내 요양보호사를 대상으로 각 사용자의 위치 간 예상 소요 시간 계산
-5. 계산된 ETA를 정렬하여 ETA 값이 작은 순서대로 5명을 선정하여 최종 후보로 반환
+2. 선호시간대 필터링: 신청자 선호시간대와 요양보호사 근무시간대 겹침 확인
+3. 서비스 요청 위치 반경 15km 내 요양보호사를 근거리 후보군으로 메모리에 로드
+4. 근거리 후보군 내 요양보호사의 요구조건 비정형 텍스트를 LLM으로 선호조건 변환 후 필터링하여 조건부합 후보군 생성
+5. 조건부합 후보군 내 요양보호사를 대상으로 각 사용자의 위치 간 예상 소요 시간 계산
+6. 계산된 ETA를 정렬하여 ETA 값이 작은 순서대로 5명을 선정하여 최종 후보로 반환
 """
 
 from fastapi import APIRouter, HTTPException, status
@@ -22,6 +23,7 @@ from ..dto.converting import ConvertNonStructuredDataToStructuredDataRequest
 from ..api.converting import convert_non_structured_data_to_structured_data
 from ..utils.location_calculator import filter_caregivers_by_distance, calculate_distance_km, calculate_estimated_travel_time
 from ..utils.naver_direction import ETACalculator
+from ..utils.time_utils import filter_caregivers_by_time_preference
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -59,16 +61,26 @@ async def recommend_matching(request: MatchingRequestDTO):
         processing_results["request_validation"] = {"status": "success", "location": f"({service_location.y}, {service_location.x})"}
         logger.info("요청 검증 완료")
         
-        # 2. 반경 15km 내 요양보호사 근거리 후보군 로드
-        nearby_candidates = await load_nearby_caregivers(service_location, request.candidateCaregivers)
+        # 2. 선호시간대 필터링 (요청 검증 후, 반경 필터링 전)
+        time_filtered_candidates = await filter_by_time_preferences(request.candidateCaregivers, request.serviceRequest)
+        processing_results["time_preference_filtering"] = {"status": "success", "count": len(time_filtered_candidates)}
+        logger.info(f"선호시간대 필터링 완료: {len(time_filtered_candidates)}명")
+        
+        if not time_filtered_candidates:
+            raise MatchingProcessError("time_preference_filtering", "선호시간대에 맞는 요양보호사가 없습니다",
+                                     {"preferred_start_time": request.serviceRequest.preferredStartTime,
+                                      "preferred_end_time": request.serviceRequest.preferredEndTime})
+        
+        # 3. 반경 15km 내 요양보호사 근거리 후보군 로드
+        nearby_candidates = await load_nearby_caregivers(service_location, time_filtered_candidates)
         processing_results["radius_filtering"] = {"status": "success", "count": len(nearby_candidates)}
         logger.info(f"반경 필터링 완료: {len(nearby_candidates)}명")
         
         if not nearby_candidates:
-            raise MatchingProcessError("radius_filtering", "15km 반경 내 요양보호사가 없습니다", 
+            raise MatchingProcessError("radius_filtering", "15km 반경 내 요양보호사가 없습니다",
                                      {"radius_km": 15, "request_location": f"({service_location.y}, {service_location.x})"})
         
-        # 3. LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성
+        # 4. LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성
         qualified_candidates = await filter_by_preferences(nearby_candidates, request)
         processing_results["preference_filtering"] = {"status": "success", "count": len(qualified_candidates)}
         logger.info(f"선호조건 필터링 완료: {len(qualified_candidates)}명")
@@ -77,7 +89,7 @@ async def recommend_matching(request: MatchingRequestDTO):
             raise MatchingProcessError("preference_filtering", "선호조건에 맞는 요양보호사가 없습니다",
                                      {"filtered_count": 0, "original_count": len(nearby_candidates)})
         
-        # 4. 각 사용자 위치 간 예상 소요 시간 계산
+        # 5. 각 사용자 위치 간 예상 소요 시간 계산
         eta_calculated_candidates = await calculate_travel_times(qualified_candidates, service_location)
         processing_results["eta_calculation"] = {"status": "success", "count": len(eta_calculated_candidates)}
         logger.info(f"ETA 계산 완료: {len(eta_calculated_candidates)}명")
@@ -86,7 +98,7 @@ async def recommend_matching(request: MatchingRequestDTO):
             raise MatchingProcessError("eta_calculation", "ETA 계산에 실패했습니다",
                                      {"calculation_failed_count": len(qualified_candidates)})
         
-        # 5. ETA 기준 정렬 후 최종 5명 선정
+        # 6. ETA 기준 정렬 후 최종 5명 선정
         final_matches = await select_final_candidates(eta_calculated_candidates)
         processing_results["final_selection"] = {"status": "success", "count": len(final_matches)}
         logger.info(f"최종 선정 완료: {len(final_matches)}명")
@@ -161,8 +173,58 @@ async def validate_service_request(request: MatchingRequestDTO) -> LocationInfo:
     except Exception as e:
         raise MatchingProcessError("request_validation", f"요청 검증 중 오류: {str(e)}")
 
+async def filter_by_time_preferences(
+    caregivers: List[CaregiverForMatchingDTO],
+    service_request: Any
+) -> List[CaregiverForMatchingDTO]:
+    """선호시간대 필터링: 신청자 선호시간대와 요양보호사 근무시간대 겹침 확인"""
+    try:
+        if not caregivers:
+            raise MatchingProcessError("time_preference_filtering", "요양보호사 후보군이 제공되지 않았습니다")
+        
+        # 신청자의 선호시간대 추출
+        preferred_start_time = getattr(service_request, 'preferredStartTime', None)
+        preferred_end_time = getattr(service_request, 'preferredEndTime', None)
+        
+        # 요양보호사 정보를 딕셔너리 리스트로 변환
+        caregiver_dicts = []
+        for caregiver in caregivers:
+            caregiver_dict = {
+                'caregiver_id': caregiver.caregiverId,
+                'work_start_time': getattr(caregiver, 'workStartTime', None),
+                'work_end_time': getattr(caregiver, 'workEndTime', None),
+                'base_location': caregiver.baseLocation,
+                'career_years': caregiver.careerYears or 0,
+                'work_area': caregiver.workArea
+            }
+            caregiver_dicts.append(caregiver_dict)
+        
+        # 시간대 필터링 적용
+        filtered_caregivers = filter_caregivers_by_time_preference(
+            caregiver_dicts, preferred_start_time, preferred_end_time
+        )
+        
+        # 필터링된 요양보호사 DTO로 변환
+        filtered_dtos = []
+        for caregiver_dict in filtered_caregivers:
+            caregiver_dto = CaregiverForMatchingDTO(
+                caregiverId=caregiver_dict['caregiver_id'],
+                baseLocation=caregiver_dict['base_location'],
+                careerYears=caregiver_dict['career_years'],
+                workArea=caregiver_dict['work_area'],
+                workStartTime=caregiver_dict['work_start_time'],
+                workEndTime=caregiver_dict['work_end_time']
+            )
+            filtered_dtos.append(caregiver_dto)
+        
+        logger.info(f"시간대 필터링 완료: 전체 {len(caregivers)}명 중 {len(filtered_dtos)}명 통과")
+        return filtered_dtos
+        
+    except Exception as e:
+        raise MatchingProcessError("time_preference_filtering", f"선호시간대 필터링 중 오류: {str(e)}")
+
 async def load_nearby_caregivers(
-    service_location: LocationInfo, 
+    service_location: LocationInfo,
     all_caregivers: List[CaregiverForMatchingDTO]
 ) -> List[Tuple[CaregiverForMatching, float]]:
     """반경 15km 내 요양보호사 근거리 후보군 로드"""
