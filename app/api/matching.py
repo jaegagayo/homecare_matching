@@ -389,16 +389,18 @@ async def create_response_dtos(
             if caregiver_dto:
                 matched_dto = MatchedCaregiverDTO(
                     caregiverId=caregiver_dto.caregiverId,
-                    availableTimes=caregiver_dto.availableTimes,
-                    address=caregiver_dto.address,
-                    location=caregiver_dto.baseLocation,
-                    matchScore=float(10 - i),  # 1위: 9점, 2위: 8점, ... 5위: 5점
-                    matchReason=f"{i}순위 | ETA {eta_minutes}분 | 거리 {distance_km}km",
+                    name=caregiver_dto.name,
                     distanceKm=distance_km,
                     estimatedTravelTime=eta_minutes,
+                    matchScore=i,  # 순위 값: 1, 2, 3, 4, 5
+                    matchReason="",  # 빈 문자열
+                    address=caregiver_dto.address,
+                    addressType=caregiver_dto.addressType,
+                    location=caregiver_dto.location,
                     career=caregiver_dto.career,
-                    serviceType=caregiver_dto.serviceType,
-                    isVerified=caregiver_dto.isVerified
+                    selfIntroduction=caregiver_dto.selfIntroduction,
+                    isVerified=caregiver_dto.isVerified,
+                    serviceType=caregiver_dto.serviceType
                 )
                 matched_caregiver_dtos.append(matched_dto)
         

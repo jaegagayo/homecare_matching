@@ -81,14 +81,17 @@ class MatchedCaregiverDTO(BaseModel):
     """매칭된 요양보호사 DTO"""
     caregiverId: str = Field(..., description="요양보호사 ID")
     name: Optional[str] = Field(None, description="이름")
-    distance: float = Field(..., description="거리 (km)")
+    distanceKm: float = Field(..., description="거리 (km)")
     estimatedTravelTime: Optional[int] = Field(None, description="예상 이동 시간 (분)")
-    matchingScore: Optional[float] = Field(None, description="매칭 점수")
+    matchScore: Optional[int] = Field(None, description="매칭 순위 (1, 2, 3, 4, 5)")
+    matchReason: Optional[str] = Field(None, description="매칭 이유")
     address: Optional[str] = Field(None, description="주소")
     addressType: Optional[str] = Field(None, description="주소 유형")
     location: Optional[str] = Field(None, description="위치 (위도,경도)")
     career: Optional[str] = Field(None, description="경력")
     selfIntroduction: Optional[str] = Field(None, description="자기소개")
+    isVerified: Optional[bool] = Field(None, description="인증 여부")
+    serviceType: Optional[str] = Field(None, description="서비스 유형")
 
 class MatchingRequestDTO(BaseModel):
     """매칭 요청 DTO"""
