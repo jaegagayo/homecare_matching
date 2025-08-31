@@ -18,6 +18,8 @@ from datetime import datetime
 # 스키마 import
 from ..dto.matching import MatchingRequestDTO, MatchingResponseDTO, MatchedCaregiverDTO, CaregiverForMatchingDTO
 from ..models.matching import MatchedCaregiver, CaregiverForMatching, LocationInfo
+from ..dto.converting import ConvertNonStructuredDataToStructuredDataRequest
+from ..api.converting import convert_non_structured_data_to_structured_data
 from ..utils.location_calculator import filter_caregivers_by_distance, calculate_distance_km, calculate_estimated_travel_time
 from ..utils.naver_direction import ETACalculator
 
@@ -199,16 +201,82 @@ async def filter_by_preferences(
 ) -> List[Tuple[CaregiverForMatching, float]]:
     """LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성"""
     try:
-        # TODO: PR #25에서 PR #22의 OpenRouter LLM 서비스 연동 구현 예정
-        # 현재는 모든 후보를 통과시킴 (임시)
-        logger.info(f"LLM 선호조건 변환 로직 연동 예정 (PR #22)")
-        logger.info(f"현재는 모든 {len(nearby_candidates)}명을 조건부합 후보군으로 선정")
+        logger.info(f"LLM 선호조건 필터링 시작: {len(nearby_candidates)}명의 후보군")
         
-        # 임시로 모든 후보를 통과
-        return nearby_candidates
+        qualified_candidates = []
+        
+        for caregiver, distance in nearby_candidates:
+            try:
+                # 요양보호사의 선호조건이 있는 경우에만 LLM 변환 수행
+                if hasattr(caregiver, 'preferences_text') and caregiver.preferences_text:
+                    logger.info(f"요양보호사 ID {caregiver.caregiver_id}의 선호조건 분석 중")
+                    
+                    # LLM 서비스 호출하여 비정형 텍스트를 정형 데이터로 변환
+                    convert_request = ConvertNonStructuredDataToStructuredDataRequest(
+                        non_structured_data=caregiver.preferences_text
+                    )
+                    structured_preferences = await convert_non_structured_data_to_structured_data(convert_request)
+                    
+                    # 기본적인 매칭 로직 (예시)
+                    is_qualified = await evaluate_caregiver_match(
+                        caregiver, structured_preferences, request
+                    )
+                    
+                    if is_qualified:
+                        qualified_candidates.append((caregiver, distance))
+                        logger.info(f"요양보호사 ID {caregiver.caregiver_id} 조건 부합 - 선정")
+                    else:
+                        logger.info(f"요양보호사 ID {caregiver.caregiver_id} 조건 불일치 - 제외")
+                else:
+                    # 선호조건이 없는 경우 기본적으로 통과
+                    qualified_candidates.append((caregiver, distance))
+                    logger.info(f"요양보호사 ID {caregiver.caregiver_id} 선호조건 없음 - 기본 선정")
+                    
+            except Exception as e:
+                logger.warning(f"요양보호사 ID {caregiver.caregiver_id} 필터링 중 오류: {str(e)} - 기본 선정")
+                # 오류 발생 시 기본적으로 통과
+                qualified_candidates.append((caregiver, distance))
+        
+        logger.info(f"LLM 선호조건 필터링 완료: {len(qualified_candidates)}명 선정")
+        return qualified_candidates
         
     except Exception as e:
         raise MatchingProcessError("preference_filtering", f"선호조건 필터링 중 오류: {str(e)}")
+
+async def evaluate_caregiver_match(
+    caregiver: CaregiverForMatching, 
+    structured_preferences: Any,
+    request: MatchingRequestDTO
+) -> bool:
+    """요양보호사의 선호조건과 서비스 요청을 매칭하여 적합성 평가"""
+    try:
+        # 기본적인 매칭 로직 구현
+        # 실제로는 더 복잡한 비즈니스 로직이 필요할 수 있음
+        
+        # 1. 서비스 유형 매칭 (예시)
+        # if structured_preferences.service_types:
+        #     # 서비스 요청의 서비스 유형과 매칭
+        #     pass
+        
+        # 2. 근무 지역 매칭 (예시)
+        # if structured_preferences.work_area:
+        #     # 서비스 요청 위치와 선호 지역 매칭
+        #     pass
+        
+        # 3. 근무 시간 매칭 (예시)
+        # if structured_preferences.work_start_time and structured_preferences.work_end_time:
+        #     # 요청된 서비스 시간과 근무 가능 시간 매칭
+        #     pass
+        
+        # 현재는 기본적으로 모든 요양보호사를 적합하다고 판단 (임시)
+        # 향후 비즈니스 요구사항에 따라 상세한 매칭 로직 구현 예정
+        logger.debug(f"요양보호사 {caregiver.caregiver_id} 매칭 평가 완료")
+        return True
+        
+    except Exception as e:
+        logger.warning(f"매칭 평가 중 오류: {str(e)}")
+        # 오류 발생 시 기본적으로 적합하다고 판단
+        return True
 
 async def calculate_travel_times(
     qualified_candidates: List[Tuple[CaregiverForMatching, float]], 
