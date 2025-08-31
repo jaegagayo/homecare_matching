@@ -96,7 +96,6 @@ class MatchedCaregiverDTO(BaseModel):
 class MatchingRequestDTO(BaseModel):
     """매칭 요청 DTO"""
     serviceRequest: ServiceRequestDTO = Field(..., description="서비스 요청 정보")
-    candidateCaregivers: List[CaregiverForMatchingDTO] = Field(..., description="후보 요양보호사 목록")
 
 class MatchingResponseDTO(BaseModel):
     """매칭 응답 DTO"""
