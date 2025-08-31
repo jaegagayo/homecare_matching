@@ -1,20 +1,11 @@
-import json
-from typing import Dict, Any, Optional
+"""
+네이버 지도 API 목 데이터 클라이언트 (deprecated)
 
-class MockNaverMapClient:
-    _dataset = None
+주의: 이 파일은 더 이상 사용되지 않습니다.
+실제 네이버 Direction 5 API는 app/utils/naver_direction.py를 사용하세요.
 
-    def __init__(self, dataset_path: str = "tests/mock_data/naver_map_api_dataset.json"):
-        if MockNaverMapClient._dataset is None:
-            # 파일 읽을 때 UTF-8 인코딩 명시
-            with open(dataset_path, 'r', encoding='utf-8') as f:
-                MockNaverMapClient._dataset = json.load(f)
+목 데이터는 tests/mock_data/naver_map_api_dataset.json에서 유지됩니다.
+"""
 
-    def get_geocode(self, query: str) -> Optional[Dict[str, Any]]:
-        """주소(query)를 키로 사용하여 mock 지오코딩 응답을 반환합니다."""
-        return self._dataset.get("geocode", {}).get(query)
-
-    def get_direction(self, start: str, goal: str) -> Optional[Dict[str, Any]]:
-        """출발지와 목적지 좌표를 키로 사용하여 mock 경로 탐색 응답을 반환합니다."""
-        key = f"{start}_to_{goal}"
-        return self._dataset.get("direction", {}).get(key)
+# 이 파일은 deprecated되었습니다.
+# 실제 ETA 계산은 app/utils/naver_direction.py의 ETACalculator를 사용하세요.
