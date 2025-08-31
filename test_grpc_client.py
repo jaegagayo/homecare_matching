@@ -2,6 +2,9 @@
 """
 gRPC 클라이언트 테스트 스크립트
 매칭 서비스 gRPC 서버와 통신 테스트
+
+⚠️  테스트 전에 gRPC 서버 포트를 확인하고 필요시 아래 GRPC_PORT 값을 수정하세요.
+기본값은 50051이지만, Docker Compose나 다른 설정에 따라 다를 수 있습니다.
 """
 
 import asyncio
@@ -9,10 +12,13 @@ import logging
 import grpc
 from app.grpc_generated import matching_service_pb2, matching_service_pb2_grpc
 
+# gRPC 서버 포트 설정 (테스트 시 서버 설정에 맞게 수정 필요)
+GRPC_PORT = 50051
+
 async def test_health_check():
     """헬스체크 테스트"""
     try:
-        async with grpc.aio.insecure_channel('localhost:50051') as channel:
+        async with grpc.aio.insecure_channel(f'localhost:{GRPC_PORT}') as channel:
             stub = matching_service_pb2_grpc.MatchingServiceStub(channel)
             
             request = matching_service_pb2.HealthCheckRequest(
@@ -33,7 +39,7 @@ async def test_health_check():
 async def test_matching_request():
     """매칭 요청 테스트"""
     try:
-        async with grpc.aio.insecure_channel('localhost:50051') as channel:
+        async with grpc.aio.insecure_channel(f'localhost:{GRPC_PORT}') as channel:
             stub = matching_service_pb2_grpc.MatchingServiceStub(channel)
             
             # 테스트용 서비스 요청 생성
