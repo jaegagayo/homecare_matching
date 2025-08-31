@@ -19,8 +19,8 @@ graph TD
 
 1. **요청 검증**: 서비스 요청 위치 DTO 수신 및 좌표 유효성 검증
 2. **반경 필터링**: 15km 반경 내 근거리 후보군 로드 (Haversine 공식 사용)
-3. **선호조건 필터링**: LLM으로 조건부합 후보군 생성 ⚠️ **PR #22 연동 예정**
-4. **ETA 계산**: 각 위치 간 예상 소요 시간 계산 ⚠️ **현재 임시 구현**
+3. **선호조건 필터링**: OpenRouter LLM으로 조건부합 후보군 생성 ✅ **PR #25에서 구현 완료**
+4. **ETA 계산**: 네이버 Direction 5 API를 통한 실제 소요시간 계산 ✅ **PR #24에서 구현 완료**
 5. **최종 선정**: ETA 기준 정렬 후 상위 5명 선정
 
 ## 🛠️ 핵심 구현 파일
@@ -41,8 +41,8 @@ graph TD
   - `recommend_matching()`: 메인 매칭 API 엔드포인트
   - `validate_service_request()`: 요청 검증
   - `load_nearby_caregivers()`: 반경 필터링
-  - `filter_by_preferences()`: 선호조건 필터링 (임시)
-  - `calculate_travel_times()`: ETA 계산 (임시)
+  - `filter_by_preferences()`: OpenRouter LLM 기반 선호조건 필터링 ✅
+  - `calculate_travel_times()`: 네이버 Direction 5 API 기반 ETA 계산 ✅
   - `select_final_candidates()`: 최종 선정
 
 ### 3. 데이터 모델
@@ -56,15 +56,72 @@ graph TD
 
 ### PR 의존성 체인
 ```
-PR #20 (gRPC 구현) → PR #21 (네이버 지도 API 스터브) → PR #23 (위치 필터링) → PR #24 (ETA 계산) ✅
+PR #20 (gRPC 구현) → PR #21 (네이버 지도 API 스터브) → PR #23 (위치 필터링) → PR #24 (ETA 계산) → PR #25 (LLM 필터링) ✅
 ```
 
 - ✅ **PR #20**: gRPC 서버/클라이언트 구현 완료 (MERGED)
 - ✅ **PR #21**: 네이버 지도 API 클라이언트 구현 및 목 데이터 추가 (MERGED)
+- ✅ **PR #22**: OpenRouter LLM 서비스 구현 완료 (MERGED) - 자연어 → 구조화된 데이터 변환
 - ✅ **PR #23**: 위치 기반 15km 반경 필터링 시스템 구현 (MERGED)
-- ✅ **PR #24**: 네이버 Direction 5 API를 이용한 실시간 ETA 계산 구현 (현재 브랜치: `i-10/feat/calculate-eta`) **🚧 완료됨**
+- ✅ **PR #24**: 네이버 Direction 5 API를 이용한 실시간 ETA 계산 구현 (MERGED)
+- ✅ **PR #25**: OpenRouter LLM 서비스 연동한 선호조건 필터링 구현 (현재 브랜치: `i-11/matching-api`) **🚧 완료됨**
 
-## ✅ 최근 완료된 작업 (2025-08-31)
+## ✅ 최근 완료된 작업
+
+### 🆕 PR #25: OpenRouter LLM 서비스 연동한 선호조건 필터링 구현 (2025-08-31 완료)
+
+#### 🎯 완료된 구현 사항
+
+**1. LLM 기반 선호조건 필터링 시스템**
+- **수정된 파일**: `app/api/matching.py`
+- **수정된 함수**: `filter_by_preferences()` - 임시 구현에서 실제 LLM 연동으로 완전 교체
+- **주요 기능**:
+  - ✅ PR #22의 OpenRouter LLM 서비스 완전 통합
+  - ✅ 요양보호사 선호조건 자연어 텍스트 → 구조화된 데이터 자동 변환
+  - ✅ 변환된 데이터를 기반으로 한 매칭 평가 시스템
+  - ✅ 오류 처리 및 fallback 로직으로 안정성 확보
+  - ✅ 상세한 로깅으로 디버깅 및 모니터링 지원
+
+**2. 매칭 평가 로직 기반 구현**
+- **신규 함수**: `evaluate_caregiver_match()`
+- **역할**: 구조화된 선호조건과 서비스 요청 간 매칭 적합성 평가
+- **확장성**: 향후 복잡한 비즈니스 로직 추가 가능한 구조로 설계
+- **현재 상태**: 기본 매칭 로직 구현 (모든 후보 적합 판정 - 확장 예정)
+
+**3. LLM 통합 테스트 시스템**
+- **신규 파일**: `test_llm_matching.py`
+- **테스트 기능**:
+  - ✅ 모듈 import 검증
+  - ✅ LLM 자연어 변환 테스트 (3개 테스트 케이스)
+  - ✅ OpenRouter API 연동 검증
+  - ✅ 실시간 변환 결과 확인
+
+**4. 변환 파이프라인 검증 결과**
+```
+테스트 케이스 1: "월화수 오전 9시부터 오후 6시까지 강남구에서 치매 어르신 방문요양 서비스 가능"
+→ 근무요일: MONDAY,TUESDAY,WEDNESDAY / 시간: 09:00-18:00 / 지역: 강남구 / 질환: DEMENTIA
+
+테스트 케이스 2: "주말 포함 24시간 간병 가능하며, 와상환자 전문입니다"  
+→ 근무요일: 전체 / 지역: 서울 전 지역 / 질환: BEDRIDDEN
+
+테스트 케이스 3: "평일 오후 2시-6시, 여성 어르신만 가능"
+→ 근무요일: 평일 / 시간: 14:00-18:00 / 성별: FEMALE
+```
+
+#### 🔗 연관 시스템 통합
+- **OpenRouter LLM API**: Google Gemini 2.5 Flash 모델 활용
+- **Converting Service**: `app/api/converting.py`의 변환 파이프라인 활용
+- **DTO 시스템**: `app/dto/converting.py`의 구조화된 데이터 모델 사용
+
+#### 🚨 현재 알려진 이슈
+**매칭 로직 세부 구현 필요**
+- **현상**: `evaluate_caregiver_match()` 함수가 현재 모든 후보를 적합하다고 판정
+- **필요 작업**: 실제 비즈니스 요구사항에 따른 세부 매칭 로직 구현
+- **확장 대상**: 서비스 유형, 근무 지역, 근무 시간, 지원 질환 등 조건별 매칭
+
+---
+
+## ✅ 이전 완료된 작업 (2025-08-31)
 
 ### PR #24: 네이버 Direction 5 API를 이용한 실시간 ETA 계산 구현 
 
@@ -117,25 +174,27 @@ PR #20 (gRPC 구현) → PR #21 (네이버 지도 API 스터브) → PR #23 (위
 
 ## 🚧 다음 구현 작업 우선순위
 
-### 우선순위 1: LLM 선호조건 필터링 연동
+### 우선순위 1: 매칭 로직 세부 구현 및 비즈니스 로직 확장
 
-**목표**: 현재 임시로 모든 후보를 통과시키는 로직을 실제 LLM 기반 필터링으로 교체
+**목표**: 현재 기본적으로 모든 후보를 적합하다고 판정하는 `evaluate_caregiver_match()` 함수에 실제 비즈니스 매칭 로직 구현
 
-#### 📋 구현 전 필수 확인 사항
-⚠️ **PR #22 우선 검토 필요**: LLM 선호조건 필터링이 이미 구현되어 있을 가능성이 있음
-- PR #22의 구현 내용 및 관련 메서드 확인
-- 기존 구현된 LLM 필터링 로직이 있는지 점검
-- 연동 방법 및 호출 인터페이스 파악
+#### 📋 구현해야 할 사항
+- **수정할 파일**: `app/api/matching.py` → `evaluate_caregiver_match()` 함수 (246-279번째 줄)
+- **현재 상태**: 모든 요양보호사를 적합하다고 판정 (기본 구현)
+- **확장 목표**: 실제 비즈니스 요구사항에 따른 세부 매칭 로직 구현
 
-#### 📋 구현해야 할 사항 (PR #22 확인 후)
-- **수정할 파일**: `app/api/matching.py` → `filter_by_preferences()` 함수 (195-204번째 줄)
-- **현재 상태**: 모든 요양보호사를 조건부합 후보군으로 통과 (임시 구현)
-- **변경 목표**: PR #22의 기존 LLM 필터링 로직 연동 또는 새로 구현
+#### 📋 구체적인 매칭 로직 구현 대상
+1. **서비스 유형 매칭**: `structured_preferences.service_types` vs 서비스 요청 유형
+2. **근무 지역 매칭**: `structured_preferences.work_area` vs 서비스 요청 위치 
+3. **근무 시간 매칭**: `work_start_time`, `work_end_time` vs 요청된 서비스 시간
+4. **지원 질환 매칭**: `supported_conditions` vs 환자 질환 정보
+5. **선호 성별/연령 매칭**: `preferred_gender`, `preferred_min_age`, `preferred_max_age` vs 환자 정보
 
 #### 🔗 참고해야 할 파일들
-- `app/api/matching.py:195-204` (현재 임시 구현된 `filter_by_preferences` 함수)
-- PR #22 관련 LLM 필터링 구현 파일들 (우선 확인 필요)
-- 기존 LLM 서비스 또는 유틸리티 파일들
+- `app/api/matching.py:246-279` (현재 기본 구현된 `evaluate_caregiver_match` 함수)
+- `app/dto/converting.py` (구조화된 선호조건 데이터 모델)
+- `app/dto/matching.py` (매칭 요청 DTO 구조)
+- `test_llm_matching.py` (LLM 변환 테스트 참고)
 
 ### 우선순위 2: 실제 네이버 API 키 검증 및 활성화
 
@@ -173,6 +232,12 @@ PR #20 (gRPC 구현) → PR #21 (네이버 지도 API 스터브) → PR #23 (위
 ## 🧪 테스트 가이드
 
 ### ETA 계산 시스템 디버깅 및 테스트
+
+**🔧 LLM 매칭 시스템 통합 테스트**
+```bash
+# LLM 선호조건 필터링 통합 테스트 실행 (신규)
+python test_llm_matching.py
+```
 
 **🔧 ETA 계산 로직 테스트**
 ```bash
@@ -269,9 +334,10 @@ LOG_LEVEL=info
 
 ## 🐛 알려진 이슈 및 TODO
 
-### 현재 임시 구현 (교체 필요)
-- ❌ `filter_by_preferences()`: 모든 후보 통과 → LLM 필터링으로 교체
-- ❌ `calculate_travel_times()`: 거리 기반 추정 → 네이버 Direction API로 교체
+### 현재 임시/기본 구현 (추가 구현 필요)
+- ✅ `filter_by_preferences()`: OpenRouter LLM 기반 선호조건 필터링 구현 완료
+- ✅ `calculate_travel_times()`: 네이버 Direction 5 API 기반 ETA 계산 구현 완료
+- ⚠️ `evaluate_caregiver_match()`: 기본 매칭 로직만 구현 → 세부 비즈니스 로직 확장 필요
 
 ### 성능 최적화 필요
 - ⚠️ 대량 요양보호사 데이터 처리 시 메모리 사용량 최적화
@@ -300,6 +366,12 @@ docker run -p 8000:8000 homecare-matching
 ---
 
 **마지막 업데이트**: 2025-08-31  
-**현재 브랜치**: `i-10/feat/calculate-eta`  
-**현재 상태**: 네이버 Direction 5 API ETA 계산 시스템 구현 완료  
-**다음 작업자**: LLM 선호조건 필터링 연동 담당자 (PR #22 우선 확인 필요)
+**현재 브랜치**: `i-11/matching-api`  
+**현재 상태**: OpenRouter LLM 기반 선호조건 필터링 시스템 구현 완료  
+**다음 작업자**: 매칭 로직 세부 구현 담당자 (`evaluate_caregiver_match()` 함수 확장 필요)
+
+### 🎯 다음 작업자를 위한 가이드
+1. **현재 완료된 기능**: LLM 선호조건 변환, 위치 필터링, ETA 계산 모두 구현됨
+2. **테스트 방법**: `python test_llm_matching.py` 실행으로 LLM 연동 확인 가능
+3. **주요 작업 대상**: `app/api/matching.py:246-279` 함수에서 실제 매칭 로직 구현
+4. **필요 환경변수**: `OPENROUTER_API_KEY` (LLM 테스트용)
