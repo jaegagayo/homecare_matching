@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import json
 
-from app.models.matching import LocationInfo
+# LocationInfo 대신 Tuple[float, float] 사용 (위도, 경도)
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +35,14 @@ class NaverDirectionClient:
             'x-ncp-apigw-api-key': self.client_secret
         }
     
-    def _build_request_params(self, origin: LocationInfo, destination: LocationInfo) -> Dict[str, str]:
+    def _build_request_params(self, origin: Tuple[float, float], destination: Tuple[float, float]) -> Dict[str, str]:
         """Direction 5 API 요청 파라미터 생성"""
         return {
-            "start": f"{origin.x},{origin.y}",
-            "goal": f"{destination.x},{destination.y}"
+            "start": f"{origin[1]},{origin[0]}",  # 경도,위도 순서
+            "goal": f"{destination[1]},{destination[0]}"  # 경도,위도 순서
         }
     
-    async def get_driving_time(self, origin: LocationInfo, destination: LocationInfo) -> Optional[int]:
+    async def get_driving_time(self, origin: Tuple[float, float], destination: Tuple[float, float]) -> Optional[int]:
         """
         두 지점 간 실제 운전 소요시간 계산
         
@@ -117,8 +117,8 @@ class NaverDirectionClient:
     
     async def batch_calculate_eta(
         self, 
-        origins: List[LocationInfo], 
-        destination: LocationInfo,
+        origins: List[Tuple[float, float]], 
+        destination: Tuple[float, float],
         max_concurrent: int = 3
     ) -> List[Tuple[int, Optional[int]]]:
         """
@@ -134,7 +134,7 @@ class NaverDirectionClient:
         """
         semaphore = asyncio.Semaphore(max_concurrent)
         
-        async def calculate_single_eta(index: int, origin: LocationInfo) -> Tuple[int, Optional[int]]:
+        async def calculate_single_eta(index: int, origin: Tuple[float, float]) -> Tuple[int, Optional[int]]:
             async with semaphore:
                 eta = await self.get_driving_time(origin, destination)
                 # API 호출 간격 조정 (Rate Limiting 준수)
@@ -190,35 +190,18 @@ class ETACalculator:
             logger.error(f"목 데이터 로드 실패: {str(e)}")
             self.mock_data = {}
     
-    def _generate_cache_key(self, origin: LocationInfo, destination: LocationInfo) -> str:
+    def _generate_cache_key(self, origin: Tuple[float, float], destination: Tuple[float, float]) -> str:
         """캐시 키 생성"""
-        return f"{origin.x},{origin.y}_to_{destination.x},{destination.y}"
+        return f"{origin[1]},{origin[0]}_to_{destination[1]},{destination[0]}"
     
-    def _get_mock_eta(self, origin: LocationInfo, destination: LocationInfo) -> Optional[int]:
-        """목 데이터에서 ETA 조회"""
-        cache_key = self._generate_cache_key(origin, destination)
-        mock_response = self.mock_data.get(cache_key)
-        
-        if mock_response:
-            try:
-                route = mock_response.get('route', {})
-                trafast = route.get('trafast', [])
-                if trafast:
-                    duration_ms = trafast[0].get('summary', {}).get('duration', 0)
-                    duration_minutes = round(duration_ms / 1000 / 60)
-                    return max(1, duration_minutes)
-            except Exception as e:
-                logger.error(f"목 데이터 ETA 추출 오류: {str(e)}")
-        
-        return None
     
-    async def calculate_eta(self, origin: LocationInfo, destination: LocationInfo) -> int:
+    async def calculate_eta(self, origin: Tuple[float, float], destination: Tuple[float, float]) -> int:
         """
-        ETA 계산 (실제 API 또는 목 데이터 사용)
+        ETA 계산 (네이버 Direction API 사용)
         
         Args:
-            origin: 출발지
-            destination: 목적지
+            origin: 출발지 (위도, 경도)
+            destination: 목적지 (위도, 경도)
             
         Returns:
             int: ETA (분)
@@ -230,25 +213,27 @@ class ETACalculator:
             logger.debug(f"캐시에서 ETA 반환: {cache_key}")
             return self.cache[cache_key]
         
-        eta = None
-        
-        if self.use_mock_data:
-            # 목 데이터 사용
-            eta = self._get_mock_eta(origin, destination)
-            if eta:
-                logger.debug(f"목 데이터에서 ETA 계산: {eta}분")
-        else:
-            # 실제 API 호출
-            eta = await self.naver_client.get_driving_time(origin, destination)
-            if eta:
-                logger.debug(f"네이버 API에서 ETA 계산: {eta}분")
+        # 실제 네이버 API 호출
+        eta = await self.naver_client.get_driving_time(origin, destination)
+        if eta:
+            logger.debug(f"네이버 API에서 ETA 계산: {eta}분")
         
         # Fallback: 거리 기반 계산
         if eta is None:
-            from app.utils.location_calculator import calculate_distance_km, calculate_estimated_travel_time
-            distance = calculate_distance_km(origin.y, origin.x, destination.y, destination.x)
-            eta = calculate_estimated_travel_time(distance)
-            logger.warning(f"Fallback ETA 사용: {eta}분 (거리: {distance}km)")
+            import math
+            # Haversine 공식으로 거리 계산
+            R = 6371  # 지구 반지름 (km)
+            lat1, lon1, lat2, lon2 = map(math.radians, [origin[0], origin[1], destination[0], destination[1]])
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+            c = 2 * math.asin(math.sqrt(a))
+            distance_km = R * c
+            
+            # 평균 30km/h로 ETA 계산
+            eta = int((distance_km / 30.0) * 60)
+            eta = max(1, eta)  # 최소 1분
+            logger.warning(f"Fallback ETA 사용: {eta}분 (거리: {distance_km:.2f}km)")
         
         # 캐시에 저장
         self.cache[cache_key] = eta
@@ -257,35 +242,27 @@ class ETACalculator:
     
     async def batch_calculate_eta(
         self, 
-        origins: List[LocationInfo], 
-        destination: LocationInfo
+        origins: List[Tuple[float, float]], 
+        destination: Tuple[float, float]
     ) -> List[int]:
         """
         배치 ETA 계산
         
         Args:
-            origins: 출발지 목록
-            destination: 공통 목적지
+            origins: 출발지 목록 (위도, 경도) 튜플 리스트
+            destination: 공통 목적지 (위도, 경도)
             
         Returns:
             List[int]: 각 출발지의 ETA (분) 리스트
         """
-        if self.use_mock_data:
-            # 목 데이터 사용 시 순차 계산
-            results = []
-            for origin in origins:
-                eta = await self.calculate_eta(origin, destination)
-                results.append(eta)
-            return results
-        else:
-            # 실제 API 사용 시 배치 계산
-            batch_results = await self.naver_client.batch_calculate_eta(origins, destination)
-            
-            processed_results = []
-            for i, (index, eta) in enumerate(batch_results):
-                if eta is None:
-                    # Fallback 계산
-                    eta = await self.calculate_eta(origins[i], destination)
-                processed_results.append(eta)
-            
-            return processed_results
+        # 네이버 API를 사용한 배치 계산
+        batch_results = await self.naver_client.batch_calculate_eta(origins, destination)
+        
+        processed_results = []
+        for i, (index, eta) in enumerate(batch_results):
+            if eta is None:
+                # Fallback 계산
+                eta = await self.calculate_eta(origins[i], destination)
+            processed_results.append(eta)
+        
+        return processed_results
