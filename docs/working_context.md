@@ -56,88 +56,143 @@ graph TD
 
 ### PR 의존성 체인
 ```
-PR #20 (gRPC 구현) → PR #21 (네이버 지도 API 스터브) → PR #23 (위치 필터링) → PR #24 (예정)
+PR #20 (gRPC 구현) → PR #21 (네이버 지도 API 스터브) → PR #23 (위치 필터링) → PR #24 (ETA 계산) ✅
 ```
 
 - ✅ **PR #20**: gRPC 서버/클라이언트 구현 완료 (MERGED)
-- ✅ **PR #21**: 네이버 지도 API 클라이언트 구현 및 목 데이터 추가
-- ✅ **PR #23**: 위치 기반 15km 반경 필터링 시스템 구현 (현재 브랜치: `feat/location-filtering`)
+- ✅ **PR #21**: 네이버 지도 API 클라이언트 구현 및 목 데이터 추가 (MERGED)
+- ✅ **PR #23**: 위치 기반 15km 반경 필터링 시스템 구현 (MERGED)
+- ✅ **PR #24**: 네이버 Direction 5 API를 이용한 실시간 ETA 계산 구현 (현재 브랜치: `i-10/feat/calculate-eta`) **🚧 완료됨**
 
-## 🚧 다음 구현 작업
+## ✅ 최근 완료된 작업 (2025-08-31)
 
-### 우선순위 1: 네이버 지도 Direction 5 API 연동
+### PR #24: 네이버 Direction 5 API를 이용한 실시간 ETA 계산 구현 
 
-**목표**: 임시 ETA 계산 로직을 실제 네이버 지도 API를 사용한 정확한 경로 계산으로 교체
+#### 🎯 완료된 구현 사항
 
-#### 구현 상세사항
-
-**1. 네이버 Direction 5 API 클라이언트 확장**
-- **파일 수정**: `app/utils/naver_map.py` 또는 새 파일 생성
-- **API 엔드포인트**: `https://naveropenapi.apigw.ntruss.com/map-direction/v1/driving`
+**1. 네이버 Direction 5 API 클라이언트 구현**
+- **신규 파일**: `app/utils/naver_direction.py`
+- **API 엔드포인트**: `https://maps.apigw.ntruss.com/map-direction/v1/driving`
 - **주요 기능**:
-  - 출발지 → 목적지 경로 검색
-  - 실시간 교통정보 반영된 소요시간 계산
-  - API 호출 실패 시 fallback 로직
+  - ✅ 실시간 교통정보 반영 (`trafast` 옵션)
+  - ✅ 차량타입 1(승용차) 고정
+  - ✅ 배치 처리로 여러 요양보호사 ETA 동시 계산
+  - ✅ API 호출 실패 시 거리 기반 계산 fallback
+  - ✅ 메모리 캐싱 시스템
+  - ✅ Rate Limiting (최대 동시 요청 3개, 0.2초 간격)
 
-**2. ETA 계산 로직 교체**
-- **파일 수정**: `app/api/matching.py` → `calculate_travel_times()` 함수
+**2. 기존 ETA 계산 로직 완전 교체**
+- **수정된 파일**: `app/api/matching.py`
+- **수정된 함수**: `calculate_travel_times()`
 - **변경사항**:
-  - 현재: `calculate_estimated_travel_time(distance_km)` (거리 기반 추정)
-  - 변경 후: 네이버 Direction 5 API 호출하여 실제 소요시간 계산
-  - 요양보호사 위치 → 신청자 위치 경로 계산
+  - ❌ 기존: `calculate_estimated_travel_time(distance_km)` (거리 기반 추정) 제거
+  - ✅ 신규: 네이버 Direction 5 API 배치 호출로 실제 소요시간 계산
+  - ✅ 요양보호사 위치 → 서비스 요청 위치 경로 계산
+  - ✅ 오류 발생 시 자동 fallback
 
-**3. API 호출 최적화**
-- **배치 처리**: 여러 요양보호사의 ETA를 동시에 계산
-- **캐싱**: 동일 경로 요청에 대한 결과 캐싱
-- **Rate Limiting**: API 호출 제한 준수
+**3. 기존 stub 함수 정리**
+- **수정된 파일**: `homecare_matching/app/utils/naver_map.py`
+- **변경사항**: deprecated 처리, 새로운 시스템 안내
+- **목 데이터 유지**: `tests/mock_data/naver_map_api_dataset.json`
 
-#### 예상 구현 코드 구조
+**4. 환경변수 설정**
+- **추가된 파일**: `.env.example` 업데이트
+- **환경변수**: 
+  - `NAVER_CLIENT_ID`: 네이버 클라우드 플랫폼 클라이언트 ID
+  - `NAVER_CLIENT_SECRET`: 네이버 클라우드 플랫폼 클라이언트 시크릿
 
-```python
-# app/utils/naver_direction.py (신규)
-async def get_driving_time(origin: LocationInfo, destination: LocationInfo) -> int:
-    """네이버 Direction 5 API로 실제 운전 소요시간 계산"""
-    pass
+**5. 테스트 및 검증**
+- **테스트 파일**: `test_eta_calculation.py` (디버깅용 보존)
+- ✅ 목 데이터 기반 ETA 계산 테스트 통과
+- ✅ Fallback 시스템 작동 확인
+- ✅ 배치 처리 성능 검증
 
-async def batch_calculate_eta(
-    origins: List[LocationInfo], 
-    destination: LocationInfo
-) -> List[int]:
-    """여러 출발지에서 목적지까지의 ETA를 배치로 계산"""
-    pass
+#### 🚨 현재 알려진 이슈
 
-# app/api/matching.py (수정)
-async def calculate_travel_times(
-    qualified_candidates: List[Tuple[CaregiverForMatching, float]], 
-    service_location: LocationInfo
-) -> List[Tuple[CaregiverForMatching, int, float]]:
-    """네이버 Direction 5 API를 사용한 실제 ETA 계산"""
-    # 기존 임시 로직 제거
-    # 네이버 API 호출 로직으로 교체
-    pass
-```
+**네이버 Direction API 인증 실패 문제**
+- **현상**: `401 Authentication Failed` 오류 발생
+- **에러 메시지**: `{"error":{"errorCode":"200","message":"Authentication Failed","details":"Authentication information are missing."}}`
+- **현재 상태**: 목 데이터로 정상 작동, 실제 API 호출 시 인증 실패
+- **트러블슈팅 필요**: API 키 유효성, 헤더 형식, 엔드포인트 URL 재검토 필요
 
-#### 새 브랜치 생성
-```bash
-# 현재 feat/location-filtering 브랜치에서
-git checkout -b feat/naver-direction-api
-```
+## 🚧 다음 구현 작업 우선순위
 
-#### 새 PR 생성 예정
-- **제목**: `feat: 네이버 Direction 5 API를 이용한 실시간 ETA 계산 구현`
-- **의존성**: PR #23에 의존
-
-### 우선순위 2: LLM 선호조건 필터링 연동 (PR #22 완료 후)
+### 우선순위 1: LLM 선호조건 필터링 연동
 
 **목표**: 현재 임시로 모든 후보를 통과시키는 로직을 실제 LLM 기반 필터링으로 교체
+
+#### 📋 구현 전 필수 확인 사항
+⚠️ **PR #22 우선 검토 필요**: LLM 선호조건 필터링이 이미 구현되어 있을 가능성이 있음
+- PR #22의 구현 내용 및 관련 메서드 확인
+- 기존 구현된 LLM 필터링 로직이 있는지 점검
+- 연동 방법 및 호출 인터페이스 파악
+
+#### 📋 구현해야 할 사항 (PR #22 확인 후)
+- **수정할 파일**: `app/api/matching.py` → `filter_by_preferences()` 함수 (195-204번째 줄)
+- **현재 상태**: 모든 요양보호사를 조건부합 후보군으로 통과 (임시 구현)
+- **변경 목표**: PR #22의 기존 LLM 필터링 로직 연동 또는 새로 구현
+
+#### 🔗 참고해야 할 파일들
+- `app/api/matching.py:195-204` (현재 임시 구현된 `filter_by_preferences` 함수)
+- PR #22 관련 LLM 필터링 구현 파일들 (우선 확인 필요)
+- 기존 LLM 서비스 또는 유틸리티 파일들
+
+### 우선순위 2: 실제 네이버 API 키 검증 및 활성화
+
+**목표**: 현재 목 데이터 기반으로 작동하는 시스템을 실제 API로 전환
+
+#### 📋 구현해야 할 사항  
+- **🚨 API 인증 문제 해결**: 현재 401 Authentication Failed 오류 트러블슈팅
+  - API 키 유효성 재확인
+  - 헤더 형식 검증 (`x-ncp-apigw-api-key-id`, `x-ncp-apigw-api-key`)
+  - 엔드포인트 URL 정확성 확인 (`https://maps.apigw.ntruss.com/map-direction/v1/driving`)
+- **실제 API 모드 활성화**: `app/api/matching.py:31-34`에서 `use_mock_data=False`로 변경
+- **API 호출 성능 모니터링**: 실제 트래픽에서의 응답시간 및 오류율 체크
+
+#### 🔗 참고해야 할 파일들
+- `app/utils/naver_direction.py` (NaverDirectionClient 클래스)
+- `app/api/matching.py:31-34` (eta_calculator 인스턴스 설정)
+- `.env` 파일 (API 키 설정)
+- `test_eta_calculation.py` (API 테스트용)
 
 ### 우선순위 3: 성능 최적화 및 모니터링
 
 **목표**: 대용량 요양보호사 데이터에서의 매칭 성능 최적화
 
+#### 📋 구현해야 할 사항
+- **캐싱 시스템 고도화**: 현재 메모리 기반 → Redis 등 외부 캐시 고려
+- **배치 처리 최적화**: 현재 3개 동시 요청 → 네이버 API 제한에 맞춰 조정
+- **API 호출 비용 최적화**: 중복 경로 제거, 스마트 캐싱
+- **성능 모니터링**: 매칭 시간, API 호출 횟수, 캐시 히트율 추적
+
+#### 🔗 참고해야 할 파일들
+- `app/utils/naver_direction.py:144-189` (ETACalculator 캐싱 로직)
+- `app/utils/naver_direction.py:87-112` (배치 처리 로직)  
+- `app/api/matching.py:213-256` (ETA 계산 통합 부분)
+
 ## 🧪 테스트 가이드
 
-### 현재 구현된 기능 테스트
+### ETA 계산 시스템 디버깅 및 테스트
+
+**🔧 ETA 계산 로직 테스트**
+```bash
+# ETA 계산 시스템 종합 테스트 실행
+python test_eta_calculation.py
+```
+
+**테스트 파일 기능**:
+- ✅ 목 데이터를 사용한 ETA 계산 검증
+- ✅ 실제 네이버 API 호출 테스트 (환경변수 설정 시)
+- ✅ Fallback 시스템 작동 확인
+- ✅ 배치 처리 성능 검증
+
+**디버깅 시나리오**:
+- ETA 계산 결과가 예상과 다를 때
+- 네이버 API 호출 실패 문제 분석
+- 목 데이터와 실제 API 결과 비교
+- 성능 병목 지점 파악
+
+### 기존 구현된 기능 테스트
 
 **1. 위치 계산 유틸리티 테스트**
 ```python
@@ -245,5 +300,6 @@ docker run -p 8000:8000 homecare-matching
 ---
 
 **마지막 업데이트**: 2025-08-31  
-**현재 브랜치**: `feat/location-filtering`  
-**다음 작업자**: 네이버 Direction 5 API 연동 담당자
+**현재 브랜치**: `i-10/feat/calculate-eta`  
+**현재 상태**: 네이버 Direction 5 API ETA 계산 시스템 구현 완료  
+**다음 작업자**: LLM 선호조건 필터링 연동 담당자 (PR #22 우선 확인 필요)
