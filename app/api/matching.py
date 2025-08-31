@@ -19,12 +19,19 @@ from datetime import datetime
 from ..dto.matching import MatchingRequestDTO, MatchingResponseDTO, MatchedCaregiverDTO, CaregiverForMatchingDTO
 from ..models.matching import MatchedCaregiver, CaregiverForMatching, LocationInfo
 from ..utils.location_calculator import filter_caregivers_by_distance, calculate_distance_km, calculate_estimated_travel_time
+from ..utils.naver_direction import ETACalculator
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ETA Calculator 인스턴스 생성 (목 데이터 사용)
+eta_calculator = ETACalculator(
+    use_mock_data=True,
+    mock_data_path="tests/mock_data/naver_map_api_dataset.json"
+)
 
 class MatchingProcessError(Exception):
     """매칭 프로세스 오류"""
@@ -207,23 +214,46 @@ async def calculate_travel_times(
     qualified_candidates: List[Tuple[CaregiverForMatching, float]], 
     service_location: LocationInfo
 ) -> List[Tuple[CaregiverForMatching, int, float]]:
-    """각 사용자 위치 간 예상 소요 시간 계산"""
+    """네이버 Direction 5 API를 사용한 실제 ETA 계산"""
     try:
         eta_calculated_candidates = []
         
+        # 요양보호사 위치들을 추출
+        caregiver_locations = []
         for caregiver, distance_km in qualified_candidates:
-            # TODO: 실제 ETA 계산 로직 구현 예정
-            # 현재는 거리 기반 간단한 계산 사용 (임시)
-            eta_minutes = calculate_estimated_travel_time(distance_km)
-            
+            caregiver_locations.append(caregiver.base_location)
+        
+        logger.info(f"네이버 Direction API로 {len(caregiver_locations)}명의 ETA 계산 시작")
+        
+        # 배치 ETA 계산 (요양보호사 위치 → 서비스 요청 위치)
+        eta_results = await eta_calculator.batch_calculate_eta(
+            origins=caregiver_locations,
+            destination=service_location
+        )
+        
+        # 결과 조합
+        for (caregiver, distance_km), eta_minutes in zip(qualified_candidates, eta_results):
             eta_calculated_candidates.append((caregiver, eta_minutes, distance_km))
         
-        logger.info(f"{len(eta_calculated_candidates)}명의 ETA 계산 완료")
+        logger.info(f"네이버 Direction API ETA 계산 완료: {len(eta_calculated_candidates)}명")
+        
+        # 로깅으로 ETA 결과 확인
+        for i, (caregiver, eta, distance) in enumerate(eta_calculated_candidates, 1):
+            logger.info(f"  {i}. {caregiver.caregiver_id}: ETA {eta}분 (거리: {distance:.2f}km)")
         
         return eta_calculated_candidates
         
     except Exception as e:
-        raise MatchingProcessError("eta_calculation", f"ETA 계산 중 오류: {str(e)}")
+        logger.error(f"ETA 계산 중 오류 발생: {str(e)}")
+        # Fallback: 기존 거리 기반 계산
+        logger.warning("Fallback으로 거리 기반 ETA 계산 사용")
+        
+        eta_calculated_candidates = []
+        for caregiver, distance_km in qualified_candidates:
+            eta_minutes = calculate_estimated_travel_time(distance_km)
+            eta_calculated_candidates.append((caregiver, eta_minutes, distance_km))
+        
+        return eta_calculated_candidates
 
 async def select_final_candidates(
     eta_calculated_candidates: List[Tuple[CaregiverForMatching, int, float]]
