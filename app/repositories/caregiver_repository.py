@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from ..models.matching import Caregiver, CaregiverPreference
 from ..dto.matching import CaregiverForMatchingDTO
-from ..models.matching import LocationInfo
+# LocationInfo 제거 - 더 이상 사용하지 않음
 
 async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatchingDTO]:
     """
