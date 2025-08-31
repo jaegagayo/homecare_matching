@@ -199,7 +199,7 @@ async def filter_by_preferences(
 ) -> List[Tuple[CaregiverForMatching, float]]:
     """LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성"""
     try:
-        # TODO: PR #22의 LLM 선호조건 변환 로직 연동 예정
+        # TODO: PR #25에서 PR #22의 OpenRouter LLM 서비스 연동 구현 예정
         # 현재는 모든 후보를 통과시킴 (임시)
         logger.info(f"LLM 선호조건 변환 로직 연동 예정 (PR #22)")
         logger.info(f"현재는 모든 {len(nearby_candidates)}명을 조건부합 후보군으로 선정")
