@@ -1,18 +1,6 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from datetime import time, date
-
-class LocationInfo(BaseModel):
-    """위치 정보 DTO - 새로운 형식"""
-    roadAddress: str = Field(..., description="도로명 주소")
-    jibunAddress: str = Field(..., description="지번 주소")
-    addressElements: List[Dict[str, Any]] = Field(..., description="주소 구성 요소")
-    x: float = Field(..., description="경도 (float)")
-    y: float = Field(..., description="위도 (float)")
-    
-    def get_coordinates(self) -> List[float]:
-        """위도, 경도를 [위도, 경도] 리스트로 반환 (기존 코드 호환성)"""
-        return [self.y, self.x]
 
 class ServiceRequest(BaseModel):
     service_request_id: str
@@ -65,7 +53,8 @@ class ServiceRequestDTO(BaseModel):
     serviceRequestId: str = Field(..., description="서비스 요청 ID")
     consumerId: str = Field(..., description="소비자 ID")
     serviceAddress: str = Field(..., description="서비스 주소")
-    location: LocationInfo = Field(..., description="위치 정보")
+    addressType: Optional[str] = Field(None, description="주소 유형")
+    location: str = Field(..., description="위치 (위도,경도)")
     requestDate: Optional[str] = Field(None, description="요청 날짜")
     preferredStartTime: Optional[str] = Field(None, description="선호 시작 시간")
     preferredEndTime: Optional[str] = Field(None, description="선호 종료 시간")
@@ -79,7 +68,8 @@ class CaregiverForMatchingDTO(BaseModel):
     userId: str = Field(..., description="사용자 ID")
     name: Optional[str] = Field(None, description="이름")
     address: Optional[str] = Field(None, description="주소")
-    location: LocationInfo = Field(..., description="위치 정보")
+    addressType: Optional[str] = Field(None, description="주소 유형")
+    location: Optional[str] = Field(None, description="위치 (위도,경도)")
     career: Optional[str] = Field(None, description="경력")
     koreanProficiency: Optional[str] = Field(None, description="한국어 능력")
     isAccompanyOuting: Optional[bool] = Field(None, description="외출 동행 가능 여부")
@@ -95,6 +85,8 @@ class MatchedCaregiverDTO(BaseModel):
     estimatedTravelTime: Optional[int] = Field(None, description="예상 이동 시간 (분)")
     matchingScore: Optional[float] = Field(None, description="매칭 점수")
     address: Optional[str] = Field(None, description="주소")
+    addressType: Optional[str] = Field(None, description="주소 유형")
+    location: Optional[str] = Field(None, description="위치 (위도,경도)")
     career: Optional[str] = Field(None, description="경력")
     selfIntroduction: Optional[str] = Field(None, description="자기소개")
 

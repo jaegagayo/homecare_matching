@@ -12,10 +12,22 @@
     "y": Integer
 }
 """
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+from app.dto.matching import ServiceRequestDTO, CaregiverForMatchingDTO, MatchingRequestDTO
 
-from app.dto.matching import LocationInfo, ServiceRequestDTO, CaregiverForMatchingDTO, MatchingRequestDTO
-from app.models.matching import LocationInfo as ModelLocationInfo
-
+class LocationInfo(BaseModel):
+    """위치 정보 DTO - 새로운 형식"""
+    roadAddress: str = Field(..., description="도로명 주소")
+    jibunAddress: str = Field(..., description="지번 주소")
+    addressElements: List[Dict[str, Any]] = Field(..., description="주소 구성 요소")
+    x: float = Field(..., description="경도 (float)")
+    y: float = Field(..., description="위도 (float)")
+    
+    def get_coordinates(self) -> List[float]:
+        """위도, 경도를 [위도, 경도] 리스트로 반환 (기존 코드 호환성)"""
+        return [self.y, self.x]
+    
 def create_example_location_info():
     """새로운 위치 정보 형식으로 예시 데이터 생성"""
     
