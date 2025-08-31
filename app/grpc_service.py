@@ -7,17 +7,16 @@ from concurrent.futures import ThreadPoolExecutor
 import grpc
 from .grpc_generated import matching_service_pb2, matching_service_pb2_grpc
 
-# 기존 매칭 로직 import
-from .api.matching import execute_distance_matching, convert_dto_caregivers_to_matching_models
-from .dto.matching import CaregiverForMatchingDTO, ServiceRequestDTO
-from .models.matching import CaregiverForMatching
+# 기존 매칭 API import
+from .api.matching import recommend_matching
+from .dto.matching import MatchingRequestDTO, CaregiverForMatchingDTO, ServiceRequestDTO
 
 logger = logging.getLogger(__name__)
 
 class MatchingServiceServicer(matching_service_pb2_grpc.MatchingServiceServicer):
     """gRPC 매칭 서비스 구현"""
     
-    def GetMatchingRecommendations(self, request, context):
+    async def GetMatchingRecommendations(self, request, context):
         """매칭 추천 요청 처리"""
         start_time = time.time()
         
@@ -36,45 +35,20 @@ class MatchingServiceServicer(matching_service_pb2_grpc.MatchingServiceServicer)
                     error_message="요양보호사 후보군이 제공되지 않았습니다"
                 )
             
-            # DTO를 매칭 모델로 변환
-            caregivers_matching = convert_dto_caregivers_to_matching_models(candidate_caregivers_dto)
-            if not caregivers_matching:
-                context.set_code(grpc.StatusCode.INTERNAL)
-                context.set_details("요양보호사 데이터 변환에 실패했습니다")
-                return matching_service_pb2.MatchingResponse(
-                    success=False,
-                    error_message="요양보호사 데이터 변환에 실패했습니다"
-                )
+            # MatchingRequestDTO 생성
+            matching_request = MatchingRequestDTO(
+                serviceRequest=service_request_dto,
+                candidateCaregivers=candidate_caregivers_dto
+            )
             
-            logger.info(f"gRPC 매칭 대상 요양보호사: {len(caregivers_matching)}명")
-            
-            # 거리 기반 매칭 알고리즘 실행
-            service_location = service_request_dto.location
-            matched_caregivers = execute_distance_matching(service_location, caregivers_matching)
-            
-            if not matched_caregivers:
-                context.set_code(grpc.StatusCode.NOT_FOUND)
-                context.set_details("매칭할 수 있는 요양보호사가 없습니다")
-                return matching_service_pb2.MatchingResponse(
-                    success=False,
-                    error_message="매칭할 수 있는 요양보호사가 없습니다"
-                )
-            
-            # 최대 5명까지 선택
-            top_matches = matched_caregivers[:5]
+            # 기존 HTTP API 호출
+            matching_response = await recommend_matching(matching_request)
             
             # 매칭 결과를 gRPC 응답으로 변환
             grpc_matched_caregivers = []
-            for match in top_matches:
-                # 원본 요양보호사 DTO 데이터 찾기
-                caregiver_dto = next(
-                    (c for c in candidate_caregivers_dto if c.caregiverId == match.caregiver_id),
-                    None
-                )
-                
-                if caregiver_dto:
-                    grpc_caregiver = self._convert_matched_caregiver_to_grpc(match, caregiver_dto)
-                    grpc_matched_caregivers.append(grpc_caregiver)
+            for matched_dto in matching_response.matchedCaregivers:
+                grpc_caregiver = self._convert_matched_caregiver_dto_to_grpc(matched_dto)
+                grpc_matched_caregivers.append(grpc_caregiver)
             
             processing_time = (time.time() - start_time) * 1000  # 밀리초
             
@@ -82,6 +56,7 @@ class MatchingServiceServicer(matching_service_pb2_grpc.MatchingServiceServicer)
                 matched_caregivers=grpc_matched_caregivers,
                 total_matches=len(grpc_matched_caregivers),
                 processing_time_ms=f"{processing_time:.2f}ms",
+                processing_results=str(matching_response.processingResults),
                 success=True,
                 error_message=""
             )
@@ -157,23 +132,23 @@ class MatchingServiceServicer(matching_service_pb2_grpc.MatchingServiceServicer)
         
         return caregiver_dtos
     
-    def _convert_matched_caregiver_to_grpc(self, match, caregiver_dto):
-        """매칭된 요양보호사를 gRPC 형태로 변환"""
+    def _convert_matched_caregiver_dto_to_grpc(self, matched_dto):
+        """매칭된 요양보호사 DTO를 gRPC 형태로 변환"""
         return matching_service_pb2.MatchedCaregiver(
-            caregiver_id=caregiver_dto.caregiverId,
-            available_times=caregiver_dto.availableTimes or "",
-            address=caregiver_dto.address or "",
+            caregiver_id=matched_dto.caregiverId,
+            available_times=matched_dto.availableTimes or "",
+            address=matched_dto.address or "",
             location=matching_service_pb2.Location(
-                latitude=caregiver_dto.baseLocation[0],
-                longitude=caregiver_dto.baseLocation[1]
+                latitude=matched_dto.location[0],
+                longitude=matched_dto.location[1]
             ),
-            match_score=match.match_score,
-            match_reason=match.reason,
-            distance_km=getattr(match, 'distance_km', 0.0),
-            estimated_travel_time=getattr(match, 'estimated_travel_time', 0),
-            career=caregiver_dto.career or "",
-            service_type=caregiver_dto.serviceType or "",
-            is_verified=caregiver_dto.isVerified or False
+            match_score=matched_dto.matchScore,
+            match_reason=matched_dto.matchReason,
+            distance_km=matched_dto.distanceKm,
+            estimated_travel_time=matched_dto.estimatedTravelTime,
+            career=matched_dto.career or "",
+            service_type=matched_dto.serviceType or "",
+            is_verified=matched_dto.isVerified or False
         )
 
 async def serve_grpc(port: int = 50051):
