@@ -48,6 +48,8 @@ class CaregiverPreference(BaseModel):
     work_max_time : Optional[str]
     available_time : Optional[str]
     work_area : Optional[str]
+    address_type : Optional[str]
+    location : Optional[str]  # "위도,경도" 문자열
     transportation : Optional[str]
     lunch_break : Optional[str]
     buffer_time : Optional[str]
