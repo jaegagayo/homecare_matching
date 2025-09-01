@@ -27,12 +27,13 @@ message ServiceRequest {
   string service_address = 3;
   string address_type = 4;
   Location location = 5;
-  string preferred_time = 6;
-  string duration = 7;
-  string service_type = 8;
-  string request_status = 9;
-  string request_date = 10;
-  string additional_information = 11;
+  string preferred_start_time = 6;  // preferredStartTime과 매칭
+  string preferred_end_time = 7;    // preferredEndTime과 매칭
+  string duration = 8;
+  string service_type = 9;
+  string request_status = 10;
+  string request_date = 11;
+  string additional_information = 12;
 }
 
 // 위치 정보
@@ -41,26 +42,52 @@ message Location {
   double longitude = 2;
 }
 
+// 요양보호사 선호도 정보
+message CaregiverPreference {
+  string caregiver_preference_id = 1;
+  string caregiver_id = 2;
+  repeated string day_of_week = 3;
+  string work_start_time = 4;
+  string work_end_time = 5;
+  string work_min_time = 6;
+  string work_max_time = 7;
+  string available_time = 8;
+  string work_area = 9;
+  string address_type = 10;
+  string location = 11;  // "위도,경도" 문자열
+  string transportation = 12;
+  string lunch_break = 13;
+  string buffer_time = 14;
+  repeated string supported_conditions = 15;
+  string preferred_min_age = 16;
+  string preferred_max_age = 17;
+  string preferred_gender = 18;
+  repeated string service_types = 19;
+}
+
 // 매칭용 요양보호사 정보 (DB 스키마 기반)
 message CaregiverForMatching {
   string caregiver_id = 1;
   string user_id = 2;
-  string available_times = 3;
-  string address = 4;
-  string service_type = 5;
-  string days_off = 6;
-  string career = 7;
-  string korean_proficiency = 8;
-  bool is_accompany_outing = 9;
-  string self_introduction = 10;
-  bool is_verified = 11;
-  Location base_location = 12;
-  int32 career_years = 13;
+  string name = 3;                    // CaregiverForMatchingDTO에 name 필드 추가
+  string available_times = 4;
+  string address = 5;
+  string address_type = 6;            // CaregiverForMatchingDTO에 addressType 필드 추가
+  string service_type = 7;
+  string days_off = 8;
+  string career = 9;
+  string korean_proficiency = 10;
+  bool is_accompany_outing = 11;
+  string self_introduction = 12;
+  string verified_status = 13;        // bool is_verified 대신 string verified_status 사용
+  Location base_location = 14;
+  int32 career_years = 15;
   // 선호도 정보 (CaregiverPreference 테이블)
-  string work_days = 14;
-  string work_area = 15;
-  string transportation = 16;
-  string supported_conditions = 17;
+  string work_days = 16;
+  string work_area = 17;
+  string transportation = 18;
+  string supported_conditions = 19;
+  CaregiverPreference preferences = 20;  // CaregiverPreference 객체 추가
 }
 
 // 매칭 응답 메시지
@@ -75,16 +102,19 @@ message MatchingResponse {
 // 매칭된 요양보호사 정보
 message MatchedCaregiver {
   string caregiver_id = 1;
-  string available_times = 2;
-  string address = 3;
-  Location location = 4;
-  double match_score = 5;
-  string match_reason = 6;
-  double distance_km = 7;
-  int32 estimated_travel_time = 8;
-  string career = 9;
-  string service_type = 10;
-  bool is_verified = 11;
+  string name = 2;                    // MatchedCaregiverDTO에 name 필드 추가
+  string available_times = 3;
+  string address = 4;
+  string address_type = 5;            // MatchedCaregiverDTO에 addressType 필드 추가
+  Location location = 6;
+  double match_score = 7;             // int -> double로 변경 (DTO에 맞춤)
+  string match_reason = 8;
+  double distance_km = 9;
+  int32 estimated_travel_time = 10;
+  string career = 11;
+  string service_type = 12;
+  string self_introduction = 13;      // MatchedCaregiverDTO에 selfIntroduction 필드 추가
+  bool is_verified = 14;
 }
 
 message ConvertNonStructuredDataToStructuredDataRequest {
