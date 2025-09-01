@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
 # 
 COPY ./app /code/app
+COPY ./run_server.py /code/run_server.py
 
-# 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# FastAPI + gRPC 통합 서버 실행
+CMD ["python", "run_server.py"]
