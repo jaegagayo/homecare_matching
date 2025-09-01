@@ -10,8 +10,9 @@ COPY ./requirements.txt /code/requirements.txt
 # 
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
-# 
+# Copy app directory and all necessary files
 COPY ./app /code/app
+COPY ./proto /code/proto
 COPY ./run_server.py /code/run_server.py
 
 # FastAPI + gRPC 통합 서버 실행
