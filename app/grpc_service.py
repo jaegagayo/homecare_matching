@@ -47,7 +47,6 @@ class MatchingServiceServicer(matching_service_pb2_grpc.MatchingServiceServicer)
                 matched_caregivers=grpc_matched_caregivers,
                 total_matches=len(grpc_matched_caregivers),
                 processing_time_ms=f"{processing_time:.2f}ms",
-                processing_results=str(matching_response.processingResults),
                 success=True,
                 error_message=""
             )
@@ -57,6 +56,31 @@ class MatchingServiceServicer(matching_service_pb2_grpc.MatchingServiceServicer)
             
         except Exception as e:
             logger.error(f"gRPC 매칭 처리 중 오류 발생: {str(e)}")
+            
+            # HTTPException의 경우 상세 정보 파싱
+            from fastapi import HTTPException
+            if isinstance(e, HTTPException):
+                # HTTP 422는 비즈니스 로직 오류 (DB에 데이터 없음 등) - 정상 응답 처리
+                if e.status_code == 422:
+                    detail = e.detail
+                    error_message = ""
+                    if isinstance(detail, dict):
+                        error_message = detail.get("message", str(e))
+                    else:
+                        error_message = str(detail)
+                    
+                    processing_time = (time.time() - start_time) * 1000
+                    logger.info(f"비즈니스 로직 결과: {error_message}")
+                    
+                    return matching_service_pb2.MatchingResponse(
+                        matched_caregivers=[],
+                        total_matches=0,
+                        processing_time_ms=f"{processing_time:.2f}ms",
+                        success=True,  # 시스템은 정상 동작했으므로 success=True
+                        error_message=error_message  # 비즈니스 메시지만 전달
+                    )
+            
+            # 그 외의 경우는 실제 오류로 처리
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"매칭 처리 중 오류가 발생했습니다: {str(e)}")
             return matching_service_pb2.MatchingResponse(
