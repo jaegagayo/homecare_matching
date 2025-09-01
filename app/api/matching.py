@@ -495,7 +495,7 @@ async def create_response_dtos(
                 location=caregiver.location,
                 career=caregiver.career,
                 selfIntroduction=caregiver.selfIntroduction,
-                isVerified=getattr(caregiver, 'verifiedStatus', None) == 'VERIFIED',
+                isVerified=getattr(caregiver, 'verifiedStatus', None) == 'APPROVED',
                 serviceType=getattr(caregiver, 'serviceType', None)
             )
             matched_caregiver_dtos.append(matched_dto)
