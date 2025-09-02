@@ -106,9 +106,8 @@ class ServiceType(Base):
     """
     __tablename__ = "service_type"
     
-    id = Column(Integer, primary_key=True)
     caregiver_preference_id = Column(Integer, ForeignKey("caregiver_preference.id"), nullable=False)
-    caregiver_service_type = Column(String, nullable=True)
+    caregiver_service_type = Column(String, primary_key=True)
     
     # 관계 설정
     caregiver_preference = relationship("CaregiverPreference")

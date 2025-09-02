@@ -320,7 +320,7 @@ async def recommend_matching(request: MatchingRequestDTO):
                                      {"radius_km": 15, "request_location": f"({service_location[0]}, {service_location[1]})"})
         
         # 5. LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성
-        qualified_candidates = await filter_by_preferences(nearby_candidates, request)
+        qualified_candidates = await filter_by_preferences(nearby_candidates)
         processing_results["preference_filtering"] = {"status": "success", "count": len(qualified_candidates)}
         logger.info(f"선호조건 필터링 완료: {len(qualified_candidates)}명")
         
@@ -514,7 +514,6 @@ async def load_nearby_caregivers(
 
 async def filter_by_preferences(
     nearby_candidates: List[Tuple[CaregiverForMatchingDTO, float]], 
-    request: MatchingRequestDTO
 ) -> List[Tuple[CaregiverForMatchingDTO, float]]:
     """LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성"""
     try:
@@ -525,9 +524,7 @@ async def filter_by_preferences(
         for caregiver, distance in nearby_candidates:
             try:
                 # 요양보호사의 선호조건이 있는 경우에만 LLM 변환 수행
-                if (getattr(caregiver, 'workStartTime', None) is not None or 
-                    getattr(caregiver, 'workEndTime', None) is not None or 
-                    getattr(caregiver, 'serviceType', None) not in (None, []) or 
+                if (getattr(caregiver, 'serviceType', None) not in (None, []) or 
                     getattr(caregiver, 'supportedCondition', None) not in (None, [])):
                     
                     logger.info(f"요양보호사 ID {caregiver.caregiverId}의 선호조건 분석 중")

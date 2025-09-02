@@ -7,7 +7,7 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from ..models.matching import Caregiver, CaregiverPreference, User, CaregiverDayOfWeek, CaregiverSupportedConditions
+from ..models.matching import Caregiver, CaregiverPreference, User, CaregiverDayOfWeek, CaregiverSupportedConditions, ServiceType
 from ..dto.matching import CaregiverForMatchingDTO
 # LocationInfo 제거 - 더 이상 사용하지 않음
 
@@ -19,8 +19,9 @@ async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatching
     try:
         # 요양보호사와 선호도 정보를 함께 조회
         stmt = (
-            select(Caregiver, CaregiverPreference, CaregiverSupportedConditions, User)
+            select(Caregiver, CaregiverPreference, ServiceType, CaregiverSupportedConditions, User)
             .outerjoin(CaregiverPreference, CaregiverPreference.caregiver_id == Caregiver.id)
+            .outerjoin(ServiceType, ServiceType.caregiver_preference_id == CaregiverPreference.id)
             .outerjoin(CaregiverSupportedConditions, CaregiverSupportedConditions.caregiver_preference_id == CaregiverPreference.id)
             .join(User, User.id == Caregiver.user_id)
             .where(Caregiver.verified_status == "APPROVED")
@@ -31,7 +32,7 @@ async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatching
         
         # ORM 모델을 DTO로 변환
         caregiver_dtos = []
-        for caregiver, pref, supportedCondition, user in rows:
+        for caregiver, pref, serviceType, supportedCondition, user in rows:
             # 위치 정보가 있는 경우에만 처리
             if pref.latitude is not None and pref.longitude is not None:
                 caregiver_dto = CaregiverForMatchingDTO(
@@ -50,7 +51,7 @@ async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatching
                     workStartTime=str(pref.work_start_time) if pref and pref.work_start_time else None,
                     workEndTime=str(pref.work_end_time) if pref and pref.work_end_time else None,
                     workArea=pref.work_area if pref else None,
-                    serviceType=None,  # service_types 컬럼이 없으므로 None
+                    serviceType=serviceType.caregiver_service_type,
                     baseLocation=f"{pref.latitude},{pref.longitude}" if pref.latitude and pref.longitude else None,
                     careerYears=caregiver.career if caregiver.career else None,
                     transportation=pref.transportation if pref else None,
