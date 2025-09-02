@@ -1,9 +1,14 @@
 from fastapi import FastAPI
 import logging
 import asyncio
+import os
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
 from .api.matching import router
 from .grpc_service import serve_grpc
+
+# .env 파일 로드
+load_dotenv()
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -18,8 +23,9 @@ async def lifespan(app: FastAPI):
     global grpc_task
     
     # 시작 시 gRPC 서버 실행
+    grpc_port = int(os.getenv("GRPC_PORT", 50051))
     logger.info("통합 서버 시작: FastAPI + gRPC")
-    grpc_task = asyncio.create_task(serve_grpc(50051))
+    grpc_task = asyncio.create_task(serve_grpc(grpc_port))
     
     yield
     
@@ -44,12 +50,13 @@ app.include_router(router, prefix="/matching", tags=["matching"])
 @app.get("/health-check")
 def health():
     """헬스체크 엔드포인트"""
+    grpc_port = int(os.getenv("GRPC_PORT", 50051))
     return {
         "status": "ok", 
         "message": "Homecare Matching API is running",
         "services": {
             "fastapi": "running",
-            "grpc": "running on port 50051"
+            "grpc": f"running on port {grpc_port}"
         }
     }
 
@@ -66,7 +73,7 @@ def root():
                 "health": "/health-check"
             },
             "grpc": {
-                "port": 50051,
+                "port": int(os.getenv("GRPC_PORT", 50051)),
                 "service": "matching.MatchingService",
                 "methods": [
                     "GetMatchingRecommendations",
