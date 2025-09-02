@@ -167,7 +167,7 @@ async def recommend_matching_logging(request: MatchingRequestDTO):
             {
                 "순번": i,
                 "이름": caregiver.name or 'N/A',
-                "근무지역": caregiver.work_area if caregiver else caregiver.workArea or '정보없음'
+                "근무지역": caregiver.workArea if caregiver else caregiver.workArea or '정보없음'
             } for i, caregiver in enumerate(region_filtered_caregivers, 1)
         ]
     }

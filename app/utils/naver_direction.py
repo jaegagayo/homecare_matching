@@ -261,7 +261,7 @@ class ETACalculator:
         batch_results = await self.naver_client.batch_calculate_eta(origins, destination)
         
         processed_results = []
-        for i, (index, eta) in enumerate(batch_results):
+        for i, eta in enumerate(batch_results):
             if eta is None:
                 # Fallback 계산
                 eta = await self.calculate_eta(origins[i], destination)
