@@ -15,96 +15,42 @@ API_ENDPOINT = f"{BASE_URL}/matching/recommend"
 
 # 테스트 데이터 (api_test_data.json 내용을 직접 포함)
 TEST_DATA = {
-    "basic_request": {
-        "serviceRequest": {
-            "serviceRequestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "consumerId": "b2c3d4e5-f6g7-8901-bcde-f12345678901",
-            "serviceAddress": "서울특별시 강남구 테헤란로 123",
-            "addressType": "ROAD",
-            "location": {
-                "latitude": 37.4979,
-                "longitude": 127.0276
-            },
-            "requestDate": "2025-09-03",
-            "preferredStartTime": "09:00:00",
-            "preferredEndTime": "17:00:00",
-            "duration": 480,
-            "serviceType": "VISITING_CARE",
-            "additionalInformation": "거동 불편한 고령자 돌봄 서비스 필요"
-        }
-    },
     "morning_service_request": {
         "serviceRequest": {
-            "serviceRequestId": "c3d4e5f6-g7h8-9012-cdef-234567890123",
-            "consumerId": "d4e5f6g7-h8i9-0123-defg-345678901234",
-            "serviceAddress": "서울특별시 송파구 올림픽로 300",
-            "addressType": "ROAD",
-            "location": {
-                "latitude": 37.5118,
-                "longitude": 126.9876
-            },
-            "requestDate": "2025-09-04",
-            "preferredStartTime": "08:00:00",
-            "preferredEndTime": "12:00:00",
-            "duration": 240,
-            "serviceType": "VISITING_CARE",
-            "additionalInformation": "오전 시간대 집중 케어 희망"
+        "serviceRequestId": "b951638d-381f-487f-a0c1-9f8944428667",
+        "consumerId": "1",
+        "serviceAddress": "전라남도 순천시 성동3길 5",
+        "addressType": "ROAD",
+        "location": {
+            "latitude": 34.9485,
+            "longitude": 127.4942
+        },
+        "requestDate": "2025-08-29",
+        "preferredStartTime": "09:00:00",
+        "preferredEndTime": "12:00:00",
+        "duration": 3,
+        "serviceType": "VISITING_CARE",
+        "additionalInformation": "테스트용 서비스 요청"
         }
     },
     "afternoon_service_request": {
         "serviceRequest": {
-            "serviceRequestId": "e5f6g7h8-i9j0-1234-efgh-456789012345",
-            "consumerId": "f6g7h8i9-j0k1-2345-fghi-567890123456",
-            "serviceAddress": "서울특별시 서초구 강남대로 456",
-            "addressType": "JIBUN",
-            "location": {
-                "latitude": 37.4847,
-                "longitude": 127.0324
-            },
-            "requestDate": "2025-09-05",
-            "preferredStartTime": "14:00:00",
-            "preferredEndTime": "18:00:00",
-            "duration": 240,
-            "serviceType": "VISITING_CARE",
-            "additionalInformation": "오후 시간대 서비스 필요"
+        "serviceRequestId": "fededa43-7cf9-4b7c-83ae-d498e1d4ef7a",
+        "consumerId": "62",
+        "serviceAddress": "전라남도 순천시 왕지동 12",
+        "addressType": "ROAD",
+        "location": {
+            "latitude": 34.9531,
+            "longitude": 127.4967
+        },
+        "requestDate": "2025-09-04",
+        "preferredStartTime": "17:00:00",
+        "preferredEndTime": "20:00:00",
+        "duration": 3,
+        "serviceType": "VISITING_NURSING",
+        "additionalInformation": "추가 정보20"
         }
-    },
-    "full_day_service_request": {
-        "serviceRequest": {
-            "serviceRequestId": "g7h8i9j0-k1l2-3456-ghij-678901234567",
-            "consumerId": "h8i9j0k1-l2m3-4567-hijk-789012345678",
-            "serviceAddress": "서울특별시 마포구 월드컵로 789",
-            "addressType": "ROAD",
-            "location": {
-                "latitude": 37.5567,
-                "longitude": 126.9240
-            },
-            "requestDate": "2025-09-06",
-            "preferredStartTime": "08:00:00",
-            "preferredEndTime": "20:00:00",
-            "duration": 720,
-            "serviceType": "VISITING_CARE",
-            "additionalInformation": "장시간 집중 돌봄 서비스 필요, 식사 준비 포함"
-        }
-    },
-    "weekend_service_request": {
-        "serviceRequest": {
-            "serviceRequestId": "i9j0k1l2-m3n4-5678-ijkl-890123456789",
-            "consumerId": "j0k1l2m3-n4o5-6789-jklm-901234567890",
-            "serviceAddress": "서울특별시 용산구 한강대로 321",
-            "addressType": "JIBUN",
-            "location": {
-                "latitude": 37.5326,
-                "longitude": 126.9652
-            },
-            "requestDate": "2025-09-07",
-            "preferredStartTime": "10:00:00",
-            "preferredEndTime": "16:00:00",
-            "duration": 360,
-            "serviceType": "VISITING_CARE",
-            "additionalInformation": "주말 시간대 서비스, 가족 방문 시간 고려"
-        }
-    }
+    }   
 }
 
 def test_api_request(test_name, request_data):
