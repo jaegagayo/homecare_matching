@@ -5,6 +5,7 @@ import os
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from .api.matching import router
+from .api.converting import router as converting_router
 from .grpc_service import serve_grpc
 
 # .env 파일 로드
@@ -46,17 +47,16 @@ app = FastAPI(
 )
 
 app.include_router(router, prefix="/matching", tags=["matching"])
+app.include_router(converting_router, prefix="/converting", tags=["converting"])
 
 @app.get("/health-check")
 def health():
     """헬스체크 엔드포인트"""
-    grpc_port = int(os.getenv("GRPC_PORT", 50051))
     return {
-        "status": "ok", 
+        "status": "ok",
         "message": "Homecare Matching API is running",
         "services": {
-            "fastapi": "running",
-            "grpc": f"running on port {grpc_port}"
+            "fastapi": "running"
         }
     }
 
@@ -70,6 +70,7 @@ def root():
         "endpoints": {
             "rest_api": {
                 "matching": "/matching/recommend",
+                "converting": "/converting/convert",
                 "health": "/health-check"
             },
             "grpc": {
