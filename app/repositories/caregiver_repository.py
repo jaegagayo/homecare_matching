@@ -7,7 +7,7 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from ..models.matching import Caregiver, CaregiverPreference, User
+from ..models.matching import Caregiver, CaregiverPreference, User, CaregiverDayOfWeek, CaregiverSupportedConditions
 from ..dto.matching import CaregiverForMatchingDTO
 # LocationInfo 제거 - 더 이상 사용하지 않음
 
@@ -39,21 +39,20 @@ async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatching
                     name=user.name if user else None,
                     address=pref.work_area if pref else None,
                     addressType=pref.address_type if pref else None,
-                    latitude = pref.latitude,
-                    longitude = pref.longitude,
+                    location=f"{pref.latitude},{pref.longitude}" if pref.latitude and pref.longitude else None,
                     career=str(caregiver.career) if caregiver.career else None,
                     koreanProficiency=caregiver.korean_proficiency,
                     isAccompanyOuting=caregiver.is_accompany_outing,
                     selfIntroduction=caregiver.self_introduction,
                     verifiedStatus=caregiver.verified_status,
                     # 추가 정보들을 preferences에서 안전하게 가져와서 설정
-                    workStartTime=str(preference.work_start_time) if preference and preference.work_start_time else None,
-                    workEndTime=str(preference.work_end_time) if preference and preference.work_end_time else None,
-                    workArea=preference.work_area if preference else None,
-                    serviceType=preference.service_types if preference else None,
-                    baseLocation=preference.location if preference else None,  # 동일한 location 사용
+                    workStartTime=str(pref.work_start_time) if pref and pref.work_start_time else None,
+                    workEndTime=str(pref.work_end_time) if pref and pref.work_end_time else None,
+                    workArea=pref.work_area if pref else None,
+                    serviceType=None,  # service_types 컬럼이 없으므로 None
+                    baseLocation=None,  # location 컬럼이 없으므로 None
                     careerYears=caregiver.career if caregiver.career else None,
-                    transportation=preference.transportation if preference else None,
+                    transportation=pref.transportation if pref else None,
                     preferences=None  # 필요시 별도로 처리
                 )
                 caregiver_dtos.append(caregiver_dto)

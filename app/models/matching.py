@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import UUID
 Base = declarative_base()
 
 class User(Base):
-    __tablename__ = "user"
+    __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
     user_id = Column(UUID(as_uuid=True))
@@ -34,7 +34,7 @@ class Caregiver(Base):
     
     id = Column(Integer, primary_key=True)
     caregiver_id = Column(UUID(as_uuid=True))
-    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     address = Column(String, nullable=True)
     career = Column(Integer, nullable=True)
     korean_proficiency = Column(String, nullable=True)
@@ -55,7 +55,6 @@ class CaregiverPreference(Base):
     id = Column(Integer, primary_key=True)
     caregiver_preference_id = Column(UUID(as_uuid=True))
     caregiver_id = Column(Integer, ForeignKey("caregiver.id"), nullable=False)
-    day_of_week = Column(String, nullable=True)  # JSON 문자열로 저장됨
     work_start_time = Column(String, nullable=True)  # time 타입을 String으로 처리
     work_end_time = Column(String, nullable=True)  # time 타입을 String으로 처리
     work_min_time = Column(Integer, nullable=True)
@@ -68,13 +67,30 @@ class CaregiverPreference(Base):
     transportation = Column(String, nullable=True)
     lunch_break = Column(Integer, nullable=True)
     buffer_time = Column(Integer, nullable=True)
-    supported_conditions = Column(String, nullable=True)  # JSON 문자열로 저장됨
     preferred_min_age = Column(Integer, nullable=True)
     preferred_max_age = Column(Integer, nullable=True)
     preferred_gender = Column(String, nullable=True)
     
     # 관계 설정
     caregiver = relationship("Caregiver")
+
+class CaregiverDayOfWeek(Base):
+    """
+    요양보호사 근무 요일 ORM 모델
+    """
+    __tablename__ = "caregiver_day_of_week"
+    
+    caregiver_id = Column(Integer, ForeignKey("caregiver.id"), primary_key=True)
+    day_of_week = Column(String, primary_key=True)
+
+class CaregiverSupportedConditions(Base):
+    """
+    요양보호사 지원 가능 질병 ORM 모델
+    """
+    __tablename__ = "caregiver_supported_conditions"
+    
+    caregiver_preference_id = Column(Integer, ForeignKey("caregiver_preference.id"), primary_key=True)
+    supported_conditions = Column(String, primary_key=True)
 
 class ServiceType(Base):
     """
