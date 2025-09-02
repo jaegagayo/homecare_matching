@@ -47,19 +47,25 @@ class CaregiverPreference(BaseModel):
     preferred_gender : Optional[str]
     service_types: List[str]
 
+# 위치 정보를 위한 별도 클래스
+class LocationDTO(BaseModel):
+    """위치 정보 DTO"""
+    latitude: float = Field(..., description="위도")
+    longitude: float = Field(..., description="경도")
+
 # 매칭 API에서 사용하는 DTO 클래스들 추가
 class ServiceRequestDTO(BaseModel):
     """서비스 요청 DTO"""
-    serviceRequestId: str = Field(..., description="서비스 요청 ID")
+    serviceRequestId: Optional[str] = Field(None, description="서비스 요청 ID (서버에서 생성)")
     consumerId: str = Field(..., description="소비자 ID")
     serviceAddress: str = Field(..., description="서비스 주소")
-    addressType: Optional[str] = Field(None, description="주소 유형")
-    location: str = Field(..., description="위치 (위도,경도)")
-    requestDate: Optional[str] = Field(None, description="요청 날짜")
-    preferredStartTime: Optional[str] = Field(None, description="선호 시작 시간")
-    preferredEndTime: Optional[str] = Field(None, description="선호 종료 시간")
-    duration: Optional[str] = Field(None, description="서비스 시간")
-    serviceType: Optional[str] = Field(None, description="서비스 유형")
+    addressType: Optional[str] = Field(None, description="주소 유형 (ROAD, JIBUN, APARTMENT, etc.)")
+    location: LocationDTO = Field(..., description="위치 정보")
+    requestDate: Optional[str] = Field(None, description="요청 날짜 (YYYY-MM-DD)")
+    preferredStartTime: Optional[str] = Field(None, description="선호 시작 시간 (HH:MM:SS)")
+    preferredEndTime: Optional[str] = Field(None, description="선호 종료 시간 (HH:MM:SS)")
+    duration: Optional[int] = Field(None, description="서비스 시간 (분 단위)")
+    serviceType: Optional[str] = Field(None, description="서비스 유형 (VISITING_CARE, etc.)")
     additionalInformation: Optional[str] = Field(None, description="추가 정보")
 
 class CaregiverForMatchingDTO(BaseModel):

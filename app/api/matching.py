@@ -184,20 +184,14 @@ async def validate_service_request(request: MatchingRequestDTO) -> Tuple[float, 
         if not request.serviceRequest.location:
             raise MatchingProcessError("request_validation", "서비스 요청 위치 정보가 없습니다")
         
-        location_str = request.serviceRequest.location
-        
-        # "위도,경도" 형식 파싱
+        # LocationDTO 객체에서 위도, 경도 추출
         try:
-            parts = location_str.split(',')
-            if len(parts) != 2:
-                raise ValueError("위치는 '위도,경도' 형식이어야 합니다")
+            latitude = request.serviceRequest.location.latitude
+            longitude = request.serviceRequest.location.longitude
             
-            latitude = float(parts[0].strip())
-            longitude = float(parts[1].strip())
-            
-        except (ValueError, IndexError) as e:
+        except (AttributeError, TypeError) as e:
             raise MatchingProcessError("request_validation", "위치 좌표 파싱 실패", 
-                                     {"location": location_str, "error": str(e)})
+                                     {"location": str(request.serviceRequest.location), "error": str(e)})
         
         # 좌표 범위 검증
         if not (-90 <= latitude <= 90):
@@ -233,7 +227,7 @@ async def filter_by_time_preferences(
         for caregiver in caregivers:
             caregiver_dict = {
                 'caregiver_id': caregiver.caregiverId,
-                'user_id': caregiver.userId, # 누락된 userId 필드 추가
+                'user_id': caregiver.userId,
                 'work_start_time': getattr(caregiver, 'workStartTime', None),
                 'work_end_time': getattr(caregiver, 'workEndTime', None),
                 'base_location': caregiver.baseLocation,
@@ -252,7 +246,7 @@ async def filter_by_time_preferences(
         for caregiver_dict in filtered_caregivers:
             caregiver_dto = CaregiverForMatchingDTO(
                 caregiverId=caregiver_dict['caregiver_id'],
-                userId=caregiver_dict['user_id'], # 누락된 userId 필드 추가
+                userId=caregiver_dict['user_id'],
                 baseLocation=caregiver_dict['base_location'],
                 careerYears=caregiver_dict['career_years'],
                 workArea=caregiver_dict['work_area'],
@@ -296,10 +290,12 @@ async def load_nearby_caregivers(
         service_lat, service_lon = service_location
         
         for caregiver in all_caregivers:
-            if caregiver.location:
+            location_to_use = caregiver.location or caregiver.baseLocation
+            logger.info(f"Caregiver {caregiver.caregiverId[:8]}... location: {caregiver.location}, baseLocation: {caregiver.baseLocation}")
+            if location_to_use:
                 try:
                     # 요양보호사 위치 파싱 "위도,경도"
-                    parts = caregiver.location.split(',')
+                    parts = location_to_use.split(',')
                     if len(parts) == 2:
                         caregiver_lat = float(parts[0].strip())
                         caregiver_lon = float(parts[1].strip())
@@ -310,13 +306,18 @@ async def load_nearby_caregivers(
                             caregiver_lat, caregiver_lon
                         )
                         
+                        logger.info(f"Caregiver {caregiver.caregiverId[:8]}... at {caregiver_lat},{caregiver_lon} is {distance_km:.2f}km away")
+                        
                         # 15km 반경 내인 경우만 추가
                         if distance_km <= 15.0:
                             filtered_caregivers.append((caregiver, distance_km))
                             
-                except (ValueError, IndexError):
+                except (ValueError, IndexError) as e:
                     # 위치 정보 파싱 실패 시 무시
+                    logger.warning(f"Failed to parse location for caregiver {caregiver.caregiverId}: {location_to_use}, error: {e}")
                     continue
+            else:
+                logger.warning(f"Caregiver {caregiver.caregiverId[:8]}... has no location data")
         
         logger.info(f"전체 {len(all_caregivers)}명 중 15km 반경 내 {len(filtered_caregivers)}명 필터링")
         
