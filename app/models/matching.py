@@ -80,8 +80,12 @@ class CaregiverDayOfWeek(Base):
     """
     __tablename__ = "caregiver_day_of_week"
     
-    caregiver_id = Column(Integer, ForeignKey("caregiver.id"), primary_key=True)
+    caregiver_id = Column(Integer, ForeignKey("caregiver_preference.id"), primary_key=True)
     day_of_week = Column(String, primary_key=True)
+    
+    # 관계 설정
+    caregiver_preference = relationship("CaregiverPreference")
+    
 
 class CaregiverSupportedConditions(Base):
     """
@@ -91,6 +95,9 @@ class CaregiverSupportedConditions(Base):
     
     caregiver_preference_id = Column(Integer, ForeignKey("caregiver_preference.id"), primary_key=True)
     supported_conditions = Column(String, primary_key=True)
+    
+    # 관계 설정
+    caregiver_preference = relationship("CaregiverPreference")
 
 class ServiceType(Base):
     """
