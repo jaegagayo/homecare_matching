@@ -437,41 +437,12 @@ async def filter_by_time_preferences(
         preferred_start_time = getattr(service_request, 'preferredStartTime', None)
         preferred_end_time = getattr(service_request, 'preferredEndTime', None)
         
-        # 요양보호사 정보를 딕셔너리 리스트로 변환
-        caregiver_dicts = []
-        for caregiver in caregivers:
-            caregiver_dict = {
-                'caregiver_id': caregiver.caregiverId,
-                'user_id': caregiver.userId,
-                'work_start_time': getattr(caregiver, 'workStartTime', None),
-                'work_end_time': getattr(caregiver, 'workEndTime', None),
-                'base_location': caregiver.baseLocation,
-                'career_years': caregiver.careerYears or 0,
-                'work_area': caregiver.workArea
-            }
-            caregiver_dicts.append(caregiver_dict)
-        
-        # 시간대 필터링 적용
         filtered_caregivers = filter_caregivers_by_time_preference(
-            caregiver_dicts, preferred_start_time, preferred_end_time
+            caregivers, preferred_start_time, preferred_end_time
         )
         
-        # 필터링된 요양보호사 DTO로 변환
-        filtered_dtos = []
-        for caregiver_dict in filtered_caregivers:
-            caregiver_dto = CaregiverForMatchingDTO(
-                caregiverId=caregiver_dict['caregiver_id'],
-                userId=caregiver_dict['user_id'],
-                baseLocation=caregiver_dict['base_location'],
-                careerYears=caregiver_dict['career_years'],
-                workArea=caregiver_dict['work_area'],
-                workStartTime=caregiver_dict['work_start_time'],
-                workEndTime=caregiver_dict['work_end_time']
-            )
-            filtered_dtos.append(caregiver_dto)
-        
-        logger.info(f"시간대 필터링 완료: 전체 {len(caregivers)}명 중 {len(filtered_dtos)}명 통과")
-        return filtered_dtos
+        logger.info(f"시간대 필터링 완료: 전체 {len(caregivers)}명 중 {len(filtered_caregivers)}명 통과")
+        return filtered_caregivers
         
     except Exception as e:
         raise MatchingProcessError("time_preference_filtering", f"선호시간대 필터링 중 오류: {str(e)}")

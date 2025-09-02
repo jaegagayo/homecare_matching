@@ -8,6 +8,9 @@ from datetime import time
 from typing import Optional, Tuple, List
 import logging
 
+# DTO import 추가
+from ..dto.matching import CaregiverForMatchingDTO
+
 logger = logging.getLogger(__name__)
 
 def parse_time(time_str: str) -> Optional[time]:
@@ -108,20 +111,20 @@ def is_time_overlap(
     return False
 
 def filter_caregivers_by_time_preference(
-    caregivers: List[dict],
+    caregivers: List[CaregiverForMatchingDTO],
     preferred_start_time: Optional[str],
     preferred_end_time: Optional[str]
-) -> List[dict]:
+) -> List[CaregiverForMatchingDTO]:
     """
     요양보호사 목록에서 선호시간대와 겹치는 사람들만 필터링
     
     Args:
-        caregivers: 요양보호사 정보 목록 (work_start_time, work_end_time 필드 포함)
+        caregivers: 요양보호사 DTO 목록
         preferred_start_time: 신청자 선호 시작 시간 (HH:MM)
         preferred_end_time: 신청자 선호 종료 시간 (HH:MM)
         
     Returns:
-        List[dict]: 시간대가 겹치는 요양보호사 목록
+        List[CaregiverForMatchingDTO]: 시간대가 겹치는 요양보호사 목록
     """
     if not preferred_start_time or not preferred_end_time:
         logger.info("신청자 선호시간대 정보가 없어 모든 요양보호사 통과")
@@ -130,12 +133,12 @@ def filter_caregivers_by_time_preference(
     filtered_caregivers = []
     
     for caregiver in caregivers:
-        caregiver_start_time = caregiver.get('work_start_time')
-        caregiver_end_time = caregiver.get('work_end_time')
+        caregiver_start_time = getattr(caregiver.preferences, 'work_start_time', None)
+        caregiver_end_time = getattr(caregiver.preferences, 'work_end_time', None)
         
         # 요양보호사 근무시간 정보가 없는 경우 기본적으로 통과
         if not caregiver_start_time or not caregiver_end_time:
-            logger.debug(f"요양보호사 {caregiver.get('caregiver_id', 'unknown')} 근무시간 정보 없음 - 통과")
+            logger.debug(f"요양보호사 {caregiver.caregiverId} 근무시간 정보 없음 - 통과")
             filtered_caregivers.append(caregiver)
             continue
             
@@ -145,9 +148,9 @@ def filter_caregivers_by_time_preference(
             caregiver_start_time, caregiver_end_time
         ):
             filtered_caregivers.append(caregiver)
-            logger.debug(f"요양보호사 {caregiver.get('caregiver_id', 'unknown')} 시간대 겹침 - 통과")
+            logger.debug(f"요양보호사 {caregiver.caregiverId} 시간대 겹침 - 통과")
         else:
-            logger.debug(f"요양보호사 {caregiver.get('caregiver_id', 'unknown')} 시간대 불일치 - 제외")
+            logger.debug(f"요양보호사 {caregiver.caregiverId} 시간대 불일치 - 제외")
             
     logger.info(f"시간대 필터링 완료: 전체 {len(caregivers)}명 중 {len(filtered_caregivers)}명 통과")
     return filtered_caregivers
