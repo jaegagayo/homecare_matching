@@ -233,6 +233,7 @@ async def filter_by_time_preferences(
         for caregiver in caregivers:
             caregiver_dict = {
                 'caregiver_id': caregiver.caregiverId,
+                'user_id': caregiver.userId, # 누락된 userId 필드 추가
                 'work_start_time': getattr(caregiver, 'workStartTime', None),
                 'work_end_time': getattr(caregiver, 'workEndTime', None),
                 'base_location': caregiver.baseLocation,
@@ -251,6 +252,7 @@ async def filter_by_time_preferences(
         for caregiver_dict in filtered_caregivers:
             caregiver_dto = CaregiverForMatchingDTO(
                 caregiverId=caregiver_dict['caregiver_id'],
+                userId=caregiver_dict['user_id'], # 누락된 userId 필드 추가
                 baseLocation=caregiver_dict['base_location'],
                 careerYears=caregiver_dict['career_years'],
                 workArea=caregiver_dict['work_area'],
