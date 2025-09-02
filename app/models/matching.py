@@ -17,6 +17,14 @@ from sqlalchemy.dialects.postgresql import UUID
 # SQLAlchemy Base 모델
 Base = declarative_base()
 
+class User(Base):
+    __tablename__ = "user"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(UUID(as_uuid=True))
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    
 class Caregiver(Base):
     """
     요양보호사 ORM 모델 - ERD 스키마에 맞춘 버전
@@ -24,18 +32,18 @@ class Caregiver(Base):
     """
     __tablename__ = "caregiver"
     
-    id = Column(Integer, primary_key=True)  # 실제 DB의 primary key (ERD에는 없지만 존재)
-    caregiver_id = Column(UUID(as_uuid=True), nullable=False)  # ERD의 UUID 필드
-    user_id = Column(Integer, nullable=False)  # ERD: user_id
-    address = Column(String, nullable=True)  # ERD: address
-    career = Column(Integer, nullable=True)  # ERD: career
-    korean_proficiency = Column(String, nullable=True)  # ERD: korean_proficiency
-    is_accompany_outing = Column(Boolean, nullable=True)  # ERD: is_accompany_outing
-    self_introduction = Column(String, nullable=True)  # ERD: self_introduction
-    verified_status = Column(String, nullable=False, default="PENDING")  # ERD: verified_status
+    id = Column(Integer, primary_key=True)
+    caregiver_id = Column(UUID(as_uuid=True))
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
+    address = Column(String, nullable=True)
+    career = Column(Integer, nullable=True)
+    korean_proficiency = Column(String, nullable=True)
+    is_accompany_outing = Column(Boolean, nullable=True)
+    self_introduction = Column(String, nullable=True)
+    verified_status = Column(String, nullable=False, default="PENDING")
     
-    # 관계 설정
-    preferences = relationship("CaregiverPreference", back_populates="caregiver", uselist=False)
+    user = relationship("User")
+    
 
 class CaregiverPreference(Base):
     """
@@ -44,9 +52,9 @@ class CaregiverPreference(Base):
     """
     __tablename__ = "caregiver_preference"
     
-    id = Column(Integer, primary_key=True)  # 실제 DB의 primary key (ERD에는 없지만 존재)
-    caregiver_preference_id = Column(UUID(as_uuid=True), nullable=False)  # ERD의 UUID 필드
-    caregiver_id = Column(Integer, ForeignKey("caregiver.id"), nullable=False)  # caregiver.id 참조
+    id = Column(Integer, primary_key=True)
+    caregiver_preference_id = Column(UUID(as_uuid=True))
+    caregiver_id = Column(Integer, ForeignKey("caregiver.id"), nullable=False)
     day_of_week = Column(String, nullable=True)  # JSON 문자열로 저장됨
     work_start_time = Column(String, nullable=True)  # time 타입을 String으로 처리
     work_end_time = Column(String, nullable=True)  # time 타입을 String으로 처리
@@ -54,19 +62,33 @@ class CaregiverPreference(Base):
     work_max_time = Column(Integer, nullable=True)
     available_time = Column(Integer, nullable=True)
     work_area = Column(String, nullable=True)
-    address_type = Column(String, nullable=True)  # ERD에 정의된 필드
-    location = Column(String, nullable=True)  # ERD의 위치 정보 "latitude,longitude"
+    address_type = Column(String, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     transportation = Column(String, nullable=True)
     lunch_break = Column(Integer, nullable=True)
-    buffer_time = Column(Integer, nullable=True)  # 방문일정 사이 버퍼 간격
-    supported_conditions = Column(String, nullable=True)  # 치매, 와상 두 종류
+    buffer_time = Column(Integer, nullable=True)
+    supported_conditions = Column(String, nullable=True)  # JSON 문자열로 저장됨
     preferred_min_age = Column(Integer, nullable=True)
     preferred_max_age = Column(Integer, nullable=True)
     preferred_gender = Column(String, nullable=True)
-    service_types = Column(String, nullable=True)  # JSON 문자열로 저장됨
     
-    # 관계 설정 (caregiver.id를 참조)
-    caregiver = relationship("Caregiver", back_populates="preferences")
+    # 관계 설정
+    caregiver = relationship("Caregiver")
+
+class ServiceType(Base):
+    """
+    서비스 타입 ORM 모델
+    Spring Boot에 의해 생성된 service_type 테이블 스키마에 맞춤
+    """
+    __tablename__ = "service_type"
+    
+    id = Column(Integer, primary_key=True)
+    caregiver_preference_id = Column(Integer, ForeignKey("caregiver_preference.id"), nullable=False)
+    caregiver_service_type = Column(String, nullable=True)
+    
+    # 관계 설정
+    caregiver_preference = relationship("CaregiverPreference")
 
 class ServiceRequest(Base):
     """
@@ -75,7 +97,8 @@ class ServiceRequest(Base):
     """
     __tablename__ = "service_request"
     
-    service_request_id = Column(UUID(as_uuid=True), primary_key=True)
+    id = Column(Integer, primary_key=True)
+    service_request_id = Column(UUID(as_uuid=True))
     consumer_id = Column(UUID(as_uuid=True), nullable=False)
     service_address = Column(String, nullable=False)
     address_type = Column(String, nullable=True)
@@ -96,9 +119,13 @@ class ServiceMatch(Base):
     """
     __tablename__ = "service_match"
     
-    service_match_id = Column(UUID(as_uuid=True), primary_key=True)
-    service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_request.service_request_id"), nullable=False)
-    caregiver_id = Column(UUID(as_uuid=True), ForeignKey("caregiver.caregiver_id"), nullable=False)
+    id = Column(Integer, primary_key=True)
+    service_match_id = Column(UUID(as_uuid=True))
+    service_request_id = Column(Integer, ForeignKey("service_request.id"), nullable=False)
+    caregiver_id = Column(Integer, ForeignKey("caregiver.id"), nullable=False)
     match_status = Column(String, nullable=True)
     service_time = Column(String, nullable=True)
     service_date = Column(String, nullable=True)
+    
+    service_request = relationship("ServiceRequest")
+    caregiver = relationship("Caregiver")
