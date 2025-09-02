@@ -13,5 +13,3 @@ COPY ./app /code/app
 
 # 서버 실행 - uvicorn으로 직접 실행 (환경 변수 사용, 기본값 설정)
 CMD ["sh", "-c", "uvicorn app.main:app --host ${HOST:-0.0.0.0} --port ${FASTAPI_PORT:-8000} --log-level ${LOG_LEVEL:-info} --reload"]
-
-# 테스트 수
