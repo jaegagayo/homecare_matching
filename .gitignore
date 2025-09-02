@@ -219,8 +219,5 @@ Temporary Items
 # iCloud generated files
 *.icloud
 
-# gRPC
-app/grpc_generated/*
-!app/grpc_generated/__init__.py
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,django,git
