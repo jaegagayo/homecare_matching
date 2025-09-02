@@ -19,8 +19,9 @@ async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatching
     try:
         # 요양보호사와 선호도 정보를 함께 조회
         stmt = (
-            select(Caregiver, CaregiverPreference, User)
+            select(Caregiver, CaregiverPreference, CaregiverSupportedConditions, User)
             .outerjoin(CaregiverPreference, CaregiverPreference.caregiver_id == Caregiver.id)
+            .outerjoin(CaregiverSupportedConditions, CaregiverSupportedConditions.caregiver_preference_id == CaregiverPreference.id)
             .join(User, User.id == Caregiver.user_id)
             .where(Caregiver.verified_status == "APPROVED")
         )
@@ -30,7 +31,7 @@ async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatching
         
         # ORM 모델을 DTO로 변환
         caregiver_dtos = []
-        for caregiver, pref, user in rows:
+        for caregiver, pref, supportedCondition, user in rows:
             # 위치 정보가 있는 경우에만 처리
             if pref.latitude is not None and pref.longitude is not None:
                 caregiver_dto = CaregiverForMatchingDTO(
@@ -53,7 +54,7 @@ async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatching
                     baseLocation=f"{pref.latitude},{pref.longitude}" if pref.latitude and pref.longitude else None,
                     careerYears=caregiver.career if caregiver.career else None,
                     transportation=pref.transportation if pref else None,
-                    preferences=None  # 필요시 별도로 처리
+                    supportedCondition=supportedCondition.supported_conditions if supportedCondition else None
                 )
                 caregiver_dtos.append(caregiver_dto)
         

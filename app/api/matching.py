@@ -162,7 +162,7 @@ async def recommend_matching_logging(request: MatchingRequestDTO):
             {
                 "순번": i,
                 "이름": caregiver.name or 'N/A',
-                "근무지역": caregiver.preferences.work_area if caregiver.preferences else caregiver.workArea or '정보없음'
+                "근무지역": caregiver.work_area if caregiver else caregiver.workArea or '정보없음'
             } for i, caregiver in enumerate(region_filtered_caregivers, 1)
         ]
     }
@@ -525,13 +525,17 @@ async def filter_by_preferences(
         for caregiver, distance in nearby_candidates:
             try:
                 # 요양보호사의 선호조건이 있는 경우에만 LLM 변환 수행
-                if hasattr(caregiver, 'preferences') and caregiver.preferences:
+                if (getattr(caregiver, 'workStartTime', None) is not None or 
+                    getattr(caregiver, 'workEndTime', None) is not None or 
+                    getattr(caregiver, 'serviceType', None) not in (None, []) or 
+                    getattr(caregiver, 'supportedCondition', None) not in (None, [])):
+                    
                     logger.info(f"요양보호사 ID {caregiver.caregiverId}의 선호조건 분석 중")
                     
                     # 선호조건 텍스트 구성 (구조화된 데이터를 텍스트로 변환)
-                    preferences_text = f"근무시간: {getattr(caregiver.preferences, 'work_start_time', '')}-{getattr(caregiver.preferences, 'work_end_time', '')}, " \
-                                     f"선호 서비스: {getattr(caregiver.preferences, 'service_types', [])}, " \
-                                     f"지원 질환: {getattr(caregiver.preferences, 'supported_conditions', [])}"
+                    preferences_text = f"근무시간: {getattr(caregiver, 'workStartTime', '')}-{getattr(caregiver, 'workEndTime', '')}, " \
+                                     f"선호 서비스: {getattr(caregiver, 'serviceType', [])}, " \
+                                     f"지원 질환: {getattr(caregiver, 'supportedCondition', [])}"
                     
                     # LLM 서비스 호출하여 비정형 텍스트를 정형 데이터로 변환
                     convert_request = ConvertNonStructuredDataToStructuredDataRequest(

@@ -89,7 +89,7 @@ class CaregiverForMatchingDTO(BaseModel):
     careerYears: Optional[int] = Field(None, description="경력 연수")
     transportation: Optional[str] = Field(None, description="교통수단")
     serviceType: Optional[str] = Field(None, description="서비스 유형")
-    preferences: Optional[CaregiverPreference] = Field(None, description="선호 조건")
+    supportedCondition: Optional[str] = Field(None, description="지원 가능 유형")
 
 class MatchedCaregiverDTO(BaseModel):
     """매칭된 요양보호사 DTO"""
