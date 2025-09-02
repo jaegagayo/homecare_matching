@@ -1,0 +1,98 @@
+{
+  "matching_request_examples": {
+    "basic_request": {
+      "description": "기본 매칭 요청",
+      "data": {
+        "serviceRequest": {
+          "serviceRequestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "consumerId": "b2c3d4e5-f6g7-8901-bcde-f12345678901",
+          "serviceAddress": "서울특별시 강남구 테헤란로 123",
+          "addressType": "APARTMENT",
+          "location": "37.4979,127.0276",
+          "requestDate": "2025-09-03",
+          "preferredStartTime": "09:00",
+          "preferredEndTime": "17:00",
+          "duration": "8시간",
+          "serviceType": "방문요양",
+          "additionalInformation": "거동 불편한 고령자 돌봄 서비스 필요"
+        }
+      }
+    },
+
+    "morning_service_request": {
+      "description": "오전 서비스 요청",
+      "data": {
+        "serviceRequest": {
+          "serviceRequestId": "c3d4e5f6-g7h8-9012-cdef-234567890123",
+          "consumerId": "d4e5f6g7-h8i9-0123-defg-345678901234",
+          "serviceAddress": "서울특별시 송파구 올림픽로 300",
+          "addressType": "APARTMENT", 
+          "location": "37.5118,126.9876",
+          "requestDate": "2025-09-04",
+          "preferredStartTime": "08:00",
+          "preferredEndTime": "12:00",
+          "duration": "4시간",
+          "serviceType": "방문요양",
+          "additionalInformation": "오전 시간대 집중 케어 희망"
+        }
+      }
+    },
+
+    "afternoon_service_request": {
+      "description": "오후 서비스 요청",
+      "data": {
+        "serviceRequest": {
+          "serviceRequestId": "e5f6g7h8-i9j0-1234-efgh-456789012345",
+          "consumerId": "f6g7h8i9-j0k1-2345-fghi-567890123456",
+          "serviceAddress": "서울특별시 서초구 강남대로 456",
+          "addressType": "VILLA",
+          "location": "37.4847,127.0324",
+          "requestDate": "2025-09-05", 
+          "preferredStartTime": "14:00",
+          "preferredEndTime": "18:00",
+          "duration": "4시간",
+          "serviceType": "방문요양",
+          "additionalInformation": "오후 시간대 서비스 필요"
+        }
+      }
+    },
+
+    "full_day_service_request": {
+      "description": "종일 서비스 요청",
+      "data": {
+        "serviceRequest": {
+          "serviceRequestId": "g7h8i9j0-k1l2-3456-ghij-678901234567",
+          "consumerId": "h8i9j0k1-l2m3-4567-hijk-789012345678",
+          "serviceAddress": "서울특별시 마포구 월드컵로 789",
+          "addressType": "APARTMENT",
+          "location": "37.5567,126.9240",
+          "requestDate": "2025-09-06",
+          "preferredStartTime": "08:00", 
+          "preferredEndTime": "20:00",
+          "duration": "12시간",
+          "serviceType": "방문요양",
+          "additionalInformation": "장시간 집중 돌봄 서비스 필요, 식사 준비 포함"
+        }
+      }
+    },
+
+    "weekend_service_request": {
+      "description": "주말 서비스 요청",
+      "data": {
+        "serviceRequest": {
+          "serviceRequestId": "i9j0k1l2-m3n4-5678-ijkl-890123456789",
+          "consumerId": "j0k1l2m3-n4o5-6789-jklm-901234567890",
+          "serviceAddress": "서울특별시 용산구 한강대로 321",
+          "addressType": "OFFICETEL",
+          "location": "37.5326,126.9652",
+          "requestDate": "2025-09-07",
+          "preferredStartTime": "10:00",
+          "preferredEndTime": "16:00",
+          "duration": "6시간",
+          "serviceType": "방문요양",
+          "additionalInformation": "주말 시간대 서비스, 가족 방문 시간 고려"
+        }
+      }
+    }
+  }
+}
