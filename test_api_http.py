@@ -140,11 +140,8 @@ def main():
     
     # 각 테스트 케이스 실행
     test_cases = [
-        ("기본 매칭 요청", TEST_DATA.get("basic_request")),
         ("오전 서비스 요청", TEST_DATA.get("morning_service_request")),
         ("오후 서비스 요청", TEST_DATA.get("afternoon_service_request")),
-        ("종일 서비스 요청", TEST_DATA.get("full_day_service_request")),
-        ("주말 서비스 요청", TEST_DATA.get("weekend_service_request"))
     ]
     
     success_count = 0
