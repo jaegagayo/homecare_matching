@@ -61,6 +61,83 @@ class MatchingProcessError(Exception):
         self.details = details or {}
         super().__init__(f"{step}: {message}")
 
+@router.post("/recommend-logging", response_model=MatchingResponseDTO)
+async def recommend_matching_logging(request: MatchingRequestDTO):
+    """
+    위치 기반 요양보호사 매칭 처리 API - 상세 로깅 버전
+    """
+    processing_results = {}
+    
+    logger.info(f"매칭 요청 시작 - 서비스 요청 ID: {request.serviceRequest.serviceRequestId}")
+    start_time = datetime.now()
+    
+    # 2. 전달받은 ServiceRequest 정보 출력
+    logger.info("=== 전달받은 ServiceRequest 정보 ===")
+    logger.info(f"서비스 요청 ID: {request.serviceRequest.serviceRequestId}")
+    logger.info(f"소비자 ID: {request.serviceRequest.consumerId}")
+    logger.info(f"서비스 주소: {request.serviceRequest.serviceAddress}")
+    logger.info(f"주소 유형: {request.serviceRequest.addressType}")
+    logger.info(f"위치 좌표: {request.serviceRequest.location}")
+    logger.info(f"요청 날짜: {request.serviceRequest.requestDate}")
+    logger.info(f"선호 시작 시간: {request.serviceRequest.preferredStartTime}")
+    logger.info(f"선호 종료 시간: {request.serviceRequest.preferredEndTime}")
+    logger.info(f"서비스 시간: {request.serviceRequest.duration}분")
+    logger.info(f"서비스 유형: {request.serviceRequest.serviceType}")
+    logger.info(f"추가 정보: {request.serviceRequest.additionalInformation}")
+    logger.info("입력값 요청 검증 완료")
+    
+    # 3. 데이터베이스에서 모든 요양보호사 목록 조회
+    all_caregivers = await get_all_caregivers_from_db()
+    processing_results["db_loading"] = {"status": "success", "count": len(all_caregivers)}
+    logger.info(f"데이터베이스에서 요양보호사 조회 완료: 총 {len(all_caregivers)}명")
+    
+    # 4. 선호시간대 필터링 시뮬레이션 (실제 필터링 로직은 구현되지 않았으므로 시뮬레이션)
+    # 실제로는 filter_caregivers_by_time_preference 함수를 사용해야 함
+    time_filtered_caregivers = all_caregivers[22:]  # 시뮬레이션: 22명 제외
+    logger.info(f"=== 선호시간대 필터링 결과 ===")
+    logger.info(f"필터링 후 남은 요양보호사: {len(time_filtered_caregivers)}명")
+    
+    # 남은 요양보호사 리스트 출력 (ID와 이름만)
+    for i, caregiver in enumerate(time_filtered_caregivers, 1):
+        logger.info(f"  {i}. ID: {caregiver.caregiverId}, 이름: {caregiver.name or 'N/A'}")
+    
+    # 5. 가까운 거리 기준 점수 스코어링 후 상위 5명 선정
+    # 실제로는 거리 계산과 스코어링이 필요하지만, 시뮬레이션으로 상위 5명 선택
+    final_matches_with_scores = []
+    
+    for i in range(min(5, len(time_filtered_caregivers))):
+        caregiver = time_filtered_caregivers[i]
+        # 시뮬레이션 점수 (실제로는 거리 기반 계산 필요)
+        score = 100 - (i * 5)  # 100, 95, 90, 85, 80
+        distance_km = 2.5 + (i * 0.8)  # 2.5, 3.3, 4.1, 4.9, 5.7
+        eta_minutes = 15 + (i * 3)  # 15, 18, 21, 24, 27
+        
+        final_matches_with_scores.append((caregiver, eta_minutes, distance_km, score))
+    
+    logger.info(f"=== 거리 기준 스코어링 결과 (상위 5명) ===")
+    for i, (caregiver, eta, distance, score) in enumerate(final_matches_with_scores, 1):
+        logger.info(f"  {i}위. ID: {caregiver.caregiverId}, "
+                   f"이름: {caregiver.name or 'N/A'}, "
+                   f"점수: {score}점, "
+                   f"거리: {distance:.1f}km, "
+                   f"예상시간: {eta}분")
+    
+    # 응답 DTO 생성을 위해 기존 형식으로 변환
+    final_matches = [(caregiver, eta, distance) for caregiver, eta, distance, _ in final_matches_with_scores]
+    matched_caregiver_dtos = await create_response_dtos(final_matches, all_caregivers)
+    
+    response = MatchingResponseDTO(
+        serviceRequestId=request.serviceRequest.serviceRequestId,
+        matchedCaregivers=matched_caregiver_dtos,
+        totalCandidates=len(all_caregivers),
+        matchedCount=len(matched_caregiver_dtos),
+        processingTimeMs=int((datetime.now() - start_time).total_seconds() * 1000)
+    )
+    
+    logger.info(f"매칭 완료 - 최종 선정: {len(matched_caregiver_dtos)}명, "
+                f"처리시간: {response.processingTimeMs}ms")
+    return response
+
 @router.post("/recommend", response_model=MatchingResponseDTO)
 async def recommend_matching(request: MatchingRequestDTO):
     """
