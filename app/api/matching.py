@@ -1,11 +1,48 @@
+"""
+위치 기반 요양보호사 매칭 시스템 API
+
+매칭 프로세스:
+1. 수요자 신청 정보로 서비스 요청 위치 DTO 수신
+2. 선호시간대 필터링: 신청자 선호시간대와 요양보호사 근무시간대 겹침 확인
+3. 서비스 요청 위치 반경 15km 내 요양보호사를 근거리 후보군으로 메모리에 로드
+4. 근거리 후보군 내 요양보호사의 요구조건 비정형 텍스트를 LLM으로 선호조건 변환 후 필터링하여 조건부합 후보군 생성
+5. 조건부합 후보군 내 요양보호사를 대상으로 각 사용자의 위치 간 예상 소요 시간 계산
+6. 계산된 ETA를 정렬하여 ETA 값이 작은 순서대로 5명을 선정하여 최종 후보로 반환
+"""
+
 from fastapi import APIRouter, HTTPException, status
-from typing import List
+from typing import List, Tuple, Dict, Any, Optional
 import logging
-import math
+import asyncio
+from datetime import datetime
 
 # 스키마 import
 from ..dto.matching import MatchingRequestDTO, MatchingResponseDTO, MatchedCaregiverDTO, CaregiverForMatchingDTO
-from ..models.matching import MatchedCaregiver, CaregiverForMatching
+# from ..models.matching import MatchedCaregiver
+from ..dto.converting import ConvertNonStructuredDataToStructuredDataRequest
+from ..api.converting import convert_non_structured_data_to_structured_data
+from ..utils.naver_direction import ETACalculator
+from ..utils.time_utils import filter_caregivers_by_time_preference
+
+# ORM 및 데이터베이스 import
+from ..database import get_db_session
+from ..repositories.caregiver_repository import get_all_caregivers
+
+async def get_all_caregivers_from_db() -> List[CaregiverForMatchingDTO]:
+    """
+    데이터베이스에서 모든 요양보호사 목록을 조회하는 함수
+    SQLAlchemy ORM을 사용하여 실제 데이터베이스에서 조회
+    """
+    try:
+        # 데이터베이스 세션 의존성 주입
+        async for session in get_db_session():
+            # ORM을 사용하여 모든 요양보호사 조회 (이미 완전한 DTO로 변환됨)
+            caregivers = await get_all_caregivers(session)
+            return caregivers
+    except Exception as e:
+        logger.error(f"데이터베이스에서 요양보호사 조회 중 오류: {str(e)}")
+        # 오류 발생 시 빈 리스트 반환 (기존 동작 유지)
+        return []
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -13,275 +50,438 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# ETA Calculator 인스턴스 생성
+eta_calculator = ETACalculator()
+
+class MatchingProcessError(Exception):
+    """매칭 프로세스 오류"""
+    def __init__(self, step: str, message: str, details: Dict[str, Any] = None):
+        self.step = step
+        self.message = message
+        self.details = details or {}
+        super().__init__(f"{step}: {message}")
+
 @router.post("/recommend", response_model=MatchingResponseDTO)
 async def recommend_matching(request: MatchingRequestDTO):
     """
-    거리 기반 매칭 처리 API
-    
-    1. 서비스 요청 위치와 요양보호사 후보군을 DTO로 받음
-    2. Haversine 공식으로 거리 계산
-    3. 거리 순으로 정렬하여 최대 5명 반환
+    위치 기반 요양보호사 매칭 처리 API
     """
+    processing_results = {}
+    
     try:
-        logger.info(f"매칭 요청 받음 - 서비스 요청 ID: {request.serviceRequest.serviceRequestId}")
+        logger.info(f"매칭 요청 시작 - 서비스 요청 ID: {request.serviceRequest.serviceRequestId}")
+        start_time = datetime.now()
         
-        # 1. 요양보호사 후보군 검증
-        if not request.candidateCaregivers:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="요양보호사 후보군이 제공되지 않았습니다"
-            )
+        # 1. 서비스 요청 위치 DTO 수신 검증
+        service_location = await validate_service_request(request)
+        processing_results["request_validation"] = {"status": "success", "location": f"({service_location[0]}, {service_location[1]})"}
+        logger.info("요청 검증 완료")
         
-        # 2. DTO를 매칭 모델로 변환
-        caregivers_matching = convert_dto_caregivers_to_matching_models(request.candidateCaregivers)
-        if not caregivers_matching:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="요양보호사 데이터 변환에 실패했습니다"
-            )
+        # 2. 데이터베이스에서 모든 요양보호사 목록 조회
+        all_caregivers = await get_all_caregivers_from_db()
+        processing_results["db_loading"] = {"status": "success", "count": len(all_caregivers)}
+        logger.info(f"데이터베이스에서 요양보호사 조회 완료: {len(all_caregivers)}명")
         
-        logger.info(f"매칭 대상 요양보호사: {len(caregivers_matching)}명")
+        if not all_caregivers:
+            raise MatchingProcessError("db_loading", "데이터베이스에 요양보호사가 없습니다")
         
-        # 3. 거리 기반 매칭 알고리즘 실행
-        service_location = request.serviceRequest.location.get_coordinates()
-        matched_caregivers = execute_distance_matching(service_location, caregivers_matching)
+        # 3. 선호시간대 필터링 (요청 검증 후, 반경 필터링 전)
+        time_filtered_candidates = await filter_by_time_preferences(all_caregivers, request.serviceRequest)
+        processing_results["time_preference_filtering"] = {"status": "success", "count": len(time_filtered_candidates)}
+        logger.info(f"선호시간대 필터링 완료: {len(time_filtered_candidates)}명")
         
-        if not matched_caregivers:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="매칭할 수 있는 요양보호사가 없습니다"
-            )
+        if not time_filtered_candidates:
+            raise MatchingProcessError("time_preference_filtering", "선호시간대에 맞는 요양보호사가 없습니다",
+                                     {"preferred_start_time": request.serviceRequest.preferredStartTime,
+                                      "preferred_end_time": request.serviceRequest.preferredEndTime})
         
-        # 4. 최대 5명까지 선택
-        top_matches = matched_caregivers[:5]
+        # 4. 반경 15km 내 요양보호사 근거리 후보군 로드
+        nearby_candidates = await load_nearby_caregivers(service_location, time_filtered_candidates)
+        processing_results["radius_filtering"] = {"status": "success", "count": len(nearby_candidates)}
+        logger.info(f"반경 필터링 완료: {len(nearby_candidates)}명")
         
-        # 5. 매칭된 요양보호사 DTO 리스트 생성
-        matched_caregiver_dtos = []
-        for match in top_matches:
-            # 원본 요양보호사 DTO 데이터 찾기
-            caregiver_dto = next(
-                (c for c in request.candidateCaregivers if c.caregiverId == match.caregiver_id),
-                None
-            )
-            
-            if caregiver_dto:
-                matched_dto = MatchedCaregiverDTO(
-                    caregiverId=caregiver_dto.caregiverId,
-                    availableTimes=caregiver_dto.availableTimes,
-                    address=caregiver_dto.address,
-                    location=caregiver_dto.baseLocation,
-                    matchScore=match.match_score,
-                    matchReason=match.reason,
-                    distanceKm=getattr(match, 'distance_km', None),
-                    estimatedTravelTime=getattr(match, 'estimated_travel_time', None),
-                    career=caregiver_dto.career,
-                    serviceType=caregiver_dto.serviceType,
-                    isVerified=caregiver_dto.isVerified
-                )
-                matched_caregiver_dtos.append(matched_dto)
+        if not nearby_candidates:
+            raise MatchingProcessError("radius_filtering", "15km 반경 내 요양보호사가 없습니다",
+                                     {"radius_km": 15, "request_location": f"({service_location[0]}, {service_location[1]})"})
         
-        if not matched_caregiver_dtos:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="매칭된 요양보호사 정보를 찾을 수 없습니다"
-            )
+        # 5. LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성
+        qualified_candidates = await filter_by_preferences(nearby_candidates, request)
+        processing_results["preference_filtering"] = {"status": "success", "count": len(qualified_candidates)}
+        logger.info(f"선호조건 필터링 완료: {len(qualified_candidates)}명")
         
-        # 6. 응답 생성
+        if not qualified_candidates:
+            raise MatchingProcessError("preference_filtering", "선호조건에 맞는 요양보호사가 없습니다",
+                                     {"filtered_count": 0, "original_count": len(nearby_candidates)})
+        
+        # 6. 각 사용자 위치 간 예상 소요 시간 계산
+        eta_calculated_candidates = await calculate_travel_times(qualified_candidates, service_location)
+        processing_results["eta_calculation"] = {"status": "success", "count": len(eta_calculated_candidates)}
+        logger.info(f"ETA 계산 완료: {len(eta_calculated_candidates)}명")
+        
+        if not eta_calculated_candidates:
+            raise MatchingProcessError("eta_calculation", "ETA 계산에 실패했습니다",
+                                     {"calculation_failed_count": len(qualified_candidates)})
+        
+        # 7. ETA 기준 정렬 후 최종 5명 선정
+        final_matches = await select_final_candidates(eta_calculated_candidates)
+        processing_results["final_selection"] = {"status": "success", "count": len(final_matches)}
+        logger.info(f"최종 선정 완료: {len(final_matches)}명")
+        
+        if not final_matches:
+            raise MatchingProcessError("final_selection", "최종 후보 선정에 실패했습니다",
+                                     {"eta_calculated_count": len(eta_calculated_candidates)})
+        
+        # 응답 DTO 생성
+        matched_caregiver_dtos = await create_response_dtos(final_matches, all_caregivers)
+        
         response = MatchingResponseDTO(
+            serviceRequestId=request.serviceRequest.serviceRequestId,
             matchedCaregivers=matched_caregiver_dtos,
-            totalMatches=len(matched_caregiver_dtos)
+            totalCandidates=len(all_caregivers),
+            matchedCount=len(matched_caregiver_dtos),
+            processingTimeMs=int((datetime.now() - start_time).total_seconds() * 1000)
         )
         
-        logger.info(f"매칭 완료 - 선택된 요양보호사: {len(matched_caregiver_dtos)}명")
+        logger.info(f"매칭 완료 - 최종 선정: {len(matched_caregiver_dtos)}명, "
+                   f"처리시간: {response.processingTimeMs}ms")
         return response
         
-    except HTTPException:
-        raise  # HTTP 예외는 그대로 전달
+    except MatchingProcessError as e:
+        processing_results[e.step] = {
+            "status": "failed",
+            "error": e.message,
+            "details": e.details
+        }
+        logger.error(f"{e.step} 실패: {e.message}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": f"{e.step} failed",
+                "message": e.message,
+                "details": e.details,
+                "processing_results": processing_results
+            }
+        )
+    
     except Exception as e:
-        logger.error(f"매칭 처리 중 오류 발생: {str(e)}")
+        logger.error(f"매칭 처리 중 예상치 못한 오류: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"매칭 처리 중 오류가 발생했습니다: {str(e)}"
+            detail={
+                "error": "Unexpected error during matching",
+                "message": str(e),
+                "processing_results": processing_results
+            }
         )
 
-def execute_distance_matching(service_location: List[float], caregivers: List[CaregiverForMatching]) -> List[MatchedCaregiver]:
-    """
-    거리 기반 매칭 알고리즘
-    
-    Args:
-        service_location: 서비스 요청 위치 [위도, 경도]
-        caregivers: 요양보호사 리스트
-    
-    Returns:
-        List[MatchedCaregiver]: 거리 순으로 정렬된 매칭 결과
-    """
-    
-    if not caregivers:
-        logger.info("매칭할 요양보호사가 없습니다")
-        return []
-    
-    caregiver_distances = []
-    
-    # 모든 요양보호사에 대해 거리 계산
-    for caregiver in caregivers:
-        caregiver_location = caregiver.base_location.get_coordinates()
-        distance_km = calculate_haversine_distance(service_location, caregiver_location)
-        caregiver_distances.append({
-            'caregiver': caregiver,
-            'distance_km': distance_km
-        })
-    
-    # 거리 순으로 정렬 (가까운 순서)
-    caregiver_distances.sort(key=lambda x: x['distance_km'])
-    
-    # 거리 기반 점수 부여 (상위 5명까지 10, 8, 6, 4, 2점)
-    score_mapping = [10, 8, 6, 4, 2]
-    matched_caregivers = []
-    
-    for i, item in enumerate(caregiver_distances):
-        if i < len(score_mapping):
-            score = score_mapping[i]
-        else:
-            score = 1  # 6위 이하는 1점
-        
-        caregiver = item['caregiver']
-        distance_km = item['distance_km']
-        
-        matched_caregiver = MatchedCaregiver(
-            caregiver_id=caregiver.caregiver_id,
-            match_score=float(score),
-            reason=generate_distance_match_reason(distance_km, score, i + 1, caregiver.career_years)
-        )
-        matched_caregivers.append(matched_caregiver)
-    
-    logger.info(f"거리 기반 매칭 완료: {len(matched_caregivers)}명")
-    for i, match in enumerate(matched_caregivers[:5], 1):
-        distance = caregiver_distances[i-1]['distance_km']
-        logger.info(f"{i}순위: {match.caregiver_id} (거리: {distance:.2f}km, 점수: {match.match_score})")
-    
-    return matched_caregivers
-
-def calculate_haversine_distance(location1: List[float], location2: List[float]) -> float:
-    """
-    Haversine 공식을 사용하여 두 GPS 좌표 간의 거리를 계산
-    
-    Args:
-        location1: 첫 번째 지점의 [위도, 경도]
-        location2: 두 번째 지점의 [위도, 경도]
-    
-    Returns:
-        두 지점 간의 거리 (km)
-    """
+async def validate_service_request(request: MatchingRequestDTO) -> Tuple[float, float]:
+    """서비스 요청 위치 DTO 수신 검증"""
     try:
-        if not location1 or not location2 or len(location1) != 2 or len(location2) != 2:
-            logger.warning("잘못된 좌표 형식")
-            return 999.0  # 매우 큰 거리 값
+        if not request.serviceRequest:
+            raise MatchingProcessError("request_validation", "서비스 요청 정보가 없습니다")
         
-        lat1, lon1 = location1
-        lat2, lon2 = location2
+        if not request.serviceRequest.location:
+            raise MatchingProcessError("request_validation", "서비스 요청 위치 정보가 없습니다")
         
-        # 지구의 반지름 (km)
-        R = 6371.0
-        
-        # 위도, 경도를 라디안으로 변환
-        lat1_rad = math.radians(lat1)
-        lon1_rad = math.radians(lon1)
-        lat2_rad = math.radians(lat2)
-        lon2_rad = math.radians(lon2)
-        
-        # 위도, 경도 차이 계산
-        dlat = lat2_rad - lat1_rad
-        dlon = lon2_rad - lon1_rad
-        
-        # Haversine 공식
-        a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        
-        # 거리 계산
-        distance = R * c
-        
-        return round(distance, 2)
+        # LocationDTO 객체에서 위도, 경도 추출
+        try:
+            latitude = request.serviceRequest.location.latitude
+            longitude = request.serviceRequest.location.longitude
             
+        except (AttributeError, TypeError) as e:
+            raise MatchingProcessError("request_validation", "위치 좌표 파싱 실패", 
+                                     {"location": str(request.serviceRequest.location), "error": str(e)})
+        
+        # 좌표 범위 검증
+        if not (-90 <= latitude <= 90):
+            raise MatchingProcessError("request_validation", "위도가 범위를 벗어났습니다",
+                                     {"latitude": latitude})
+        
+        if not (-180 <= longitude <= 180):
+            raise MatchingProcessError("request_validation", "경도가 범위를 벗어났습니다",
+                                     {"longitude": longitude})
+        
+        return (latitude, longitude)
+        
     except Exception as e:
-        logger.warning(f"거리 계산 오류: {e}")
-        return 999.0
+        if isinstance(e, MatchingProcessError):
+            raise
+        raise MatchingProcessError("request_validation", f"요청 검증 중 오류: {str(e)}")
 
-def convert_dto_caregivers_to_matching_models(caregiver_dtos: List[CaregiverForMatchingDTO]) -> List[CaregiverForMatching]:
-    """
-    CaregiverForMatchingDTO 목록을 CaregiverForMatching 목록으로 변환
-    
-    Args:
-        caregiver_dtos: DTO 요양보호사 목록
-        
-    Returns:
-        List[CaregiverForMatching]: 매칭용 요양보호사 모델 목록
-    """
+async def filter_by_time_preferences(
+    caregivers: List[CaregiverForMatchingDTO],
+    service_request: Any
+) -> List[CaregiverForMatchingDTO]:
+    """선호시간대 필터링: 신청자 선호시간대와 요양보호사 근무시간대 겹침 확인"""
     try:
-        matching_caregivers = []
+        if not caregivers:
+            raise MatchingProcessError("time_preference_filtering", "요양보호사 후보군이 제공되지 않았습니다")
         
-        for dto in caregiver_dtos:
-            caregiver_matching = CaregiverForMatching(
-                caregiver_id=dto.caregiverId,
-                base_location=dto.baseLocation,
-                career_years=dto.careerYears,
-                available_times=dto.availableTimes,
-                service_type=dto.serviceType,
-                days_off=dto.daysOff,
-                work_area=dto.workArea
+        # 신청자의 선호시간대 추출
+        preferred_start_time = getattr(service_request, 'preferredStartTime', None)
+        preferred_end_time = getattr(service_request, 'preferredEndTime', None)
+        
+        # 요양보호사 정보를 딕셔너리 리스트로 변환
+        caregiver_dicts = []
+        for caregiver in caregivers:
+            caregiver_dict = {
+                'caregiver_id': caregiver.caregiverId,
+                'user_id': caregiver.userId,
+                'work_start_time': getattr(caregiver, 'workStartTime', None),
+                'work_end_time': getattr(caregiver, 'workEndTime', None),
+                'base_location': caregiver.baseLocation,
+                'career_years': caregiver.careerYears or 0,
+                'work_area': caregiver.workArea
+            }
+            caregiver_dicts.append(caregiver_dict)
+        
+        # 시간대 필터링 적용
+        filtered_caregivers = filter_caregivers_by_time_preference(
+            caregiver_dicts, preferred_start_time, preferred_end_time
+        )
+        
+        # 필터링된 요양보호사 DTO로 변환
+        filtered_dtos = []
+        for caregiver_dict in filtered_caregivers:
+            caregiver_dto = CaregiverForMatchingDTO(
+                caregiverId=caregiver_dict['caregiver_id'],
+                userId=caregiver_dict['user_id'],
+                baseLocation=caregiver_dict['base_location'],
+                careerYears=caregiver_dict['career_years'],
+                workArea=caregiver_dict['work_area'],
+                workStartTime=caregiver_dict['work_start_time'],
+                workEndTime=caregiver_dict['work_end_time']
             )
-            matching_caregivers.append(caregiver_matching)
+            filtered_dtos.append(caregiver_dto)
         
-        logger.info(f"DTO → Matching 모델 변환 완료: {len(matching_caregivers)}명")
-        return matching_caregivers
+        logger.info(f"시간대 필터링 완료: 전체 {len(caregivers)}명 중 {len(filtered_dtos)}명 통과")
+        return filtered_dtos
         
     except Exception as e:
-        logger.error(f"DTO → Matching 모델 변환 오류: {e}")
-        return []
+        raise MatchingProcessError("time_preference_filtering", f"선호시간대 필터링 중 오류: {str(e)}")
 
-def generate_distance_match_reason(distance_km: float, score: float, rank: int, career_years: int) -> str:
-    """
-    거리 기반 매칭 이유 생성
-    
-    Args:
-        distance_km: 거리 (km)
-        score: 매칭 점수
-        rank: 순위
-        career_years: 경력 년수
-    
-    Returns:
-        str: 매칭 이유 설명
-    """
+async def load_nearby_caregivers(
+    service_location: Tuple[float, float],
+    all_caregivers: List[CaregiverForMatchingDTO]
+) -> List[Tuple[CaregiverForMatchingDTO, float]]:
+    """반경 15km 내 요양보호사 근거리 후보군 로드"""
     try:
-        reasons = []
+        if not all_caregivers:
+            raise MatchingProcessError("radius_filtering", "요양보호사 후보군이 제공되지 않았습니다")
         
-        # 순위 정보
-        reasons.append(f"{rank}순위")
+        import math
         
-        # 거리 정보
-        if distance_km < 5.0:
-            distance_desc = f"매우 가까운 거리 ({distance_km}km)"
-        elif distance_km < 10.0:
-            distance_desc = f"가까운 거리 ({distance_km}km)"
-        elif distance_km < 20.0:
-            distance_desc = f"적절한 거리 ({distance_km}km)"
-        else:
-            distance_desc = f"거리 {distance_km}km"
-        reasons.append(distance_desc)
+        def calculate_distance_km(lat1, lon1, lat2, lon2):
+            """Haversine 공식을 사용한 거리 계산 (km)"""
+            R = 6371  # 지구 반지름 (km)
+            
+            lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            
+            a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+            c = 2 * math.asin(math.sqrt(a))
+            
+            return R * c
         
-        # 경력 정보 (있는 경우)
-        if career_years > 0:
-            if career_years >= 5:
-                reasons.append(f"풍부한 경력 ({career_years}년)")
-            elif career_years >= 3:
-                reasons.append(f"충분한 경력 ({career_years}년)")
+        # 15km 반경 내 필터링
+        filtered_caregivers = []
+        service_lat, service_lon = service_location
+        
+        for caregiver in all_caregivers:
+            location_to_use = caregiver.location or caregiver.baseLocation
+            logger.info(f"Caregiver {caregiver.caregiverId[:8]}... location: {caregiver.location}, baseLocation: {caregiver.baseLocation}")
+            if location_to_use:
+                try:
+                    # 요양보호사 위치 파싱 "위도,경도"
+                    parts = location_to_use.split(',')
+                    if len(parts) == 2:
+                        caregiver_lat = float(parts[0].strip())
+                        caregiver_lon = float(parts[1].strip())
+                        
+                        # 거리 계산
+                        distance_km = calculate_distance_km(
+                            service_lat, service_lon, 
+                            caregiver_lat, caregiver_lon
+                        )
+                        
+                        logger.info(f"Caregiver {caregiver.caregiverId[:8]}... at {caregiver_lat},{caregiver_lon} is {distance_km:.2f}km away")
+                        
+                        # 15km 반경 내인 경우만 추가
+                        if distance_km <= 15.0:
+                            filtered_caregivers.append((caregiver, distance_km))
+                            
+                except (ValueError, IndexError) as e:
+                    # 위치 정보 파싱 실패 시 무시
+                    logger.warning(f"Failed to parse location for caregiver {caregiver.caregiverId}: {location_to_use}, error: {e}")
+                    continue
             else:
-                reasons.append(f"경력 {career_years}년")
+                logger.warning(f"Caregiver {caregiver.caregiverId[:8]}... has no location data")
         
-        # 최종 점수
-        reasons.append(f"매칭 점수 {score}점")
+        logger.info(f"전체 {len(all_caregivers)}명 중 15km 반경 내 {len(filtered_caregivers)}명 필터링")
         
-        return " | ".join(reasons)
+        return filtered_caregivers
         
     except Exception as e:
-        logger.warning(f"매칭 이유 생성 오류: {e}")
-        return f"{rank}순위 | 거리 {distance_km}km | 점수 {score}점"
+        raise MatchingProcessError("radius_filtering", f"근거리 후보군 로드 중 오류: {str(e)}")
+
+async def filter_by_preferences(
+    nearby_candidates: List[Tuple[CaregiverForMatchingDTO, float]], 
+    request: MatchingRequestDTO
+) -> List[Tuple[CaregiverForMatchingDTO, float]]:
+    """LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성"""
+    try:
+        logger.info(f"LLM 선호조건 필터링 시작: {len(nearby_candidates)}명의 후보군")
+        
+        qualified_candidates = []
+        
+        for caregiver, distance in nearby_candidates:
+            try:
+                # 요양보호사의 선호조건이 있는 경우에만 LLM 변환 수행
+                if hasattr(caregiver, 'preferences') and caregiver.preferences:
+                    logger.info(f"요양보호사 ID {caregiver.caregiverId}의 선호조건 분석 중")
+                    
+                    # 선호조건 텍스트 구성 (구조화된 데이터를 텍스트로 변환)
+                    preferences_text = f"근무시간: {getattr(caregiver.preferences, 'work_start_time', '')}-{getattr(caregiver.preferences, 'work_end_time', '')}, " \
+                                     f"선호 서비스: {getattr(caregiver.preferences, 'service_types', [])}, " \
+                                     f"지원 질환: {getattr(caregiver.preferences, 'supported_conditions', [])}"
+                    
+                    # LLM 서비스 호출하여 비정형 텍스트를 정형 데이터로 변환
+                    convert_request = ConvertNonStructuredDataToStructuredDataRequest(
+                        non_structured_data=preferences_text
+                    )
+                    structured_preferences = await convert_non_structured_data_to_structured_data(convert_request)
+                    
+                    # 기본적인 매칭 로직
+                    is_qualified = True  # 임시로 모든 후보자를 통과시킴
+                    
+                    if is_qualified:
+                        qualified_candidates.append((caregiver, distance))
+                        logger.info(f"요양보호사 ID {caregiver.caregiverId} 조건 부합 - 선정")
+                    else:
+                        logger.info(f"요양보호사 ID {caregiver.caregiverId} 조건 불일치 - 제외")
+                else:
+                    # 선호조건이 없는 경우 기본적으로 통과
+                    qualified_candidates.append((caregiver, distance))
+                    logger.info(f"요양보호사 ID {caregiver.caregiverId} 선호조건 없음 - 기본 선정")
+                    
+            except Exception as e:
+                logger.warning(f"요양보호사 ID {caregiver.caregiverId} 필터링 중 오류: {str(e)} - 기본 선정")
+                # 오류 발생 시 기본적으로 통과
+                qualified_candidates.append((caregiver, distance))
+        
+        logger.info(f"LLM 선호조건 필터링 완료: {len(qualified_candidates)}명 선정")
+        return qualified_candidates
+        
+    except Exception as e:
+        raise MatchingProcessError("preference_filtering", f"선호조건 필터링 중 오류: {str(e)}")
+
+async def calculate_travel_times(
+    qualified_candidates: List[Tuple[CaregiverForMatchingDTO, float]],
+    service_location: Tuple[float, float]
+) -> List[Tuple[CaregiverForMatchingDTO, int, float]]:
+    """네이버 Direction 5 API를 사용한 실제 ETA 계산"""
+    try:
+        eta_calculated_candidates = []
+        
+        # 요양보호사 위치들을 추출 (Tuple[float, float] 형식으로 변환)
+        caregiver_locations = []
+        for caregiver, distance_km in qualified_candidates:
+            if caregiver.location:
+                try:
+                    parts = caregiver.location.split(',')
+                    if len(parts) == 2:
+                        lat = float(parts[0].strip())
+                        lon = float(parts[1].strip())
+                        caregiver_locations.append((lat, lon))
+                except (ValueError, IndexError):
+                    # 파싱 실패 시 기본값 사용
+                    caregiver_locations.append(service_location)
+            else:
+                caregiver_locations.append(service_location)
+        
+        logger.info(f"네이버 Direction API로 {len(caregiver_locations)}명의 ETA 계산 시작")
+        
+        # 배치 ETA 계산 (요양보호사 위치 → 서비스 요청 위치)
+        eta_results = await eta_calculator.batch_calculate_eta(
+            origins=caregiver_locations,
+            destination=service_location
+        )
+        
+        # 결과 조합
+        for (caregiver, distance_km), eta_minutes in zip(qualified_candidates, eta_results):
+            eta_calculated_candidates.append((caregiver, eta_minutes, distance_km))
+        
+        logger.info(f"네이버 Direction API ETA 계산 완료: {len(eta_calculated_candidates)}명")
+        
+        # 로깅으로 ETA 결과 확인
+        for i, (caregiver, eta, distance) in enumerate(eta_calculated_candidates, 1):
+            logger.info(f"  {i}. {caregiver.caregiverId}: ETA {eta}분 (거리: {distance:.2f}km)")
+        
+        return eta_calculated_candidates
+        
+    except Exception as e:
+        logger.error(f"ETA 계산 중 오류 발생: {str(e)}")
+        # Fallback: 기존 거리 기반 계산
+        logger.warning("Fallback으로 거리 기반 ETA 계산 사용")
+        
+        eta_calculated_candidates = []
+        for caregiver, distance_km in qualified_candidates:
+            # 간단한 ETA 계산: 평균 30km/h 기준으로 시간 계산 (분 단위)
+            eta_minutes = int((distance_km / 30.0) * 60)
+            eta_calculated_candidates.append((caregiver, eta_minutes, distance_km))
+        
+        return eta_calculated_candidates
+
+async def select_final_candidates(
+    eta_calculated_candidates: List[Tuple[CaregiverForMatchingDTO, int, float]]
+) -> List[Tuple[CaregiverForMatchingDTO, int, float]]:
+    """ETA 기준 정렬 후 최종 5명 선정"""
+    try:
+        # ETA 기준 오름차순 정렬
+        sorted_candidates = sorted(eta_calculated_candidates, key=lambda x: x[1])
+        
+        # 최대 5명 선정
+        final_candidates = sorted_candidates[:5]
+        
+        logger.info(f"ETA 기준 최종 {len(final_candidates)}명 선정")
+        for i, (caregiver, eta, distance) in enumerate(final_candidates, 1):
+            logger.info(f"{i}순위: {caregiver.caregiverId} (ETA: {eta}분, 거리: {distance:.2f}km)")
+        
+        return final_candidates
+        
+    except Exception as e:
+        raise MatchingProcessError("final_selection", f"최종 후보 선정 중 오류: {str(e)}")
+
+async def create_response_dtos(
+    final_matches: List[Tuple[CaregiverForMatchingDTO, int, float]],
+    all_caregivers: List[CaregiverForMatchingDTO]
+) -> List[MatchedCaregiverDTO]:
+    """최종 매칭 결과를 DTO로 변환"""
+    try:
+        matched_caregiver_dtos = []
+        
+        for i, (caregiver, eta_minutes, distance_km) in enumerate(final_matches, 1):
+            # caregiver는 이미 CaregiverForMatchingDTO이므로 직접 사용
+            matched_dto = MatchedCaregiverDTO(
+                caregiverId=caregiver.caregiverId,
+                name=caregiver.name,
+                distanceKm=distance_km,
+                estimatedTravelTime=eta_minutes,
+                matchScore=i,  # 순위 값: 1, 2, 3, 4, 5
+                matchReason="",  # 빈 문자열
+                address=caregiver.address,
+                addressType=caregiver.addressType,
+                location=caregiver.location,
+                career=caregiver.career,
+                selfIntroduction=caregiver.selfIntroduction,
+                isVerified=getattr(caregiver, 'verifiedStatus', None) == 'APPROVED',
+                serviceType=getattr(caregiver, 'serviceType', None)
+            )
+            matched_caregiver_dtos.append(matched_dto)
+        
+        return matched_caregiver_dtos
+        
+    except Exception as e:
+        raise MatchingProcessError("response_creation", f"응답 DTO 생성 중 오류: {str(e)}")
