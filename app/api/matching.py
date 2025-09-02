@@ -18,7 +18,6 @@ from datetime import datetime
 
 # 스키마 import
 from ..dto.matching import MatchingRequestDTO, MatchingResponseDTO, MatchedCaregiverDTO, CaregiverForMatchingDTO
-# from ..models.matching import MatchedCaregiver
 from ..dto.converting import ConvertNonStructuredDataToStructuredDataRequest
 from ..api.converting import convert_non_structured_data_to_structured_data
 from ..utils.naver_direction import ETACalculator

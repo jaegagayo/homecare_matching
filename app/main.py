@@ -52,6 +52,7 @@ app.include_router(converting_router, prefix="/converting", tags=["converting"])
 @app.get("/health-check")
 def health():
     """헬스체크 엔드포인트"""
+    grpc_port = int(os.getenv("GRPC_PORT", 50051))
     return {
         "status": "ok",
         "message": "Homecare Matching API is running",
