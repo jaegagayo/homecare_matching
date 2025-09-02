@@ -15,7 +15,7 @@ load_dotenv()
 # 데이터베이스 연결 URL (Spring Boot에서 초기화된 DB)
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/homecare_db"
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/homecare"
 )
 
 # 읽기 전용 비동기 엔진 생성
