@@ -5,6 +5,8 @@ from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, status
 import httpx
 from dotenv import load_dotenv
+import pprint
+from datetime import datetime
 
 from ..dto.converting import (
   ConvertNonStructuredDataToStructuredDataRequest,
@@ -24,12 +26,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# OpenRouter 설정
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# AI 모델 설정
+AI_API_KEY = os.getenv("OPENROUTER_API_KEY")
+AI_BASE_URL = "https://openrouter.ai/api/v1"
 
-if not OPENROUTER_API_KEY:
-  logger.warning("OPENROUTER_API_KEY 환경변수가 설정되지 않았습니다.")
+if not AI_API_KEY:
+  logger.warning("AI 모델 API 키가 설정되지 않았습니다.")
 
 @router.post("/convert", response_model=ConvertNonStructuredDataToStructuredDataResponse)
 async def convert_non_structured_data_to_structured_data(
@@ -38,42 +40,124 @@ async def convert_non_structured_data_to_structured_data(
   """
   비정형 데이터를 정형 데이터로 변환하는 API
   
-  OpenRouter를 통해 ChatGPT 모델을 사용하여 자연어로 작성된 
+  자체 AI 모델을 사용하여 자연어로 작성된 
   요양보호사 근무조건을 구조화된 데이터로 변환합니다.
   """
+  pp = pprint.PrettyPrinter(indent=2, width=120, depth=None)
+  
+  logger.info("=" * 100)
+  logger.info("🤖 AI 데이터 변환 요청 시작")
+  logger.info("=" * 100)
+  start_time = datetime.now()
+  
   try:
-    logger.info(f"비정형 데이터 변환 요청: {request.non_structured_data[:100]}...")
+    # 1. 입력 데이터 검증
+    logger.info("\n📋 === 입력 비정형 데이터 분석 ===")
+    input_data_info = {
+      "데이터 길이": f"{len(request.non_structured_data)}자",
+      "입력 내용": request.non_structured_data
+    }
+    
+    for line in pp.pformat(input_data_info).split('\n'):
+      logger.info(f"   {line}")
+    logger.info("✅ 입력 데이터 분석 완료\n")
 
-    # OpenRouter API 키 확인
-    if not OPENROUTER_API_KEY:
+    # AI 모델 키 확인
+    if not AI_API_KEY:
+      logger.error("❌ AI 모델 서비스를 사용할 수 없습니다.")
       raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="OpenRouter API 키가 설정되지 않았습니다."
+        detail="AI 모델 서비스를 사용할 수 없습니다."
       )
       
-    # LLM 프롬프트 생성
-    prompt = create_conversion_prompt(request.non_structured_data)
+    # 2. AI 모델 변환 처리
+    logger.info("🧠 === AI 모델 변환 처리 시작 ===")
+    structured_data = await call_ai_model(request.non_structured_data)
+    
+    ai_result_info = {
+      "변환 상태": "성공",
+      "추출된 필드 수": len(structured_data) if isinstance(structured_data, dict) else 0,
+      "변환 결과": structured_data
+    }
+    
+    for line in pp.pformat(ai_result_info).split('\n'):
+      logger.info(f"   {line}")
+    logger.info("✅ AI 모델 변환 완료\n")
       
-    # OpenRouter API 호출
-    structured_data = await call_openrouter_api(prompt)
-      
-    # 응답 검증 및 변환
-    response = parse_llm_response(structured_data)
-      
-    logger.info("비정형 데이터 변환 완료")
+    # 3. 데이터 구조화 및 검증
+    logger.info("🔍 === 데이터 구조화 및 검증 ===")
+    response = parse_ai_response(structured_data)
+    
+    # 구조화된 결과 로깅
+    structured_result = {
+      "구조화 상태": "성공",
+      "최종 변환 데이터": {
+        "근무요일": response.day_of_week,
+        "근무시간": f"{response.work_start_time} ~ {response.work_end_time}" if response.work_start_time and response.work_end_time else "미지정",
+        "근무지역": response.work_area or "미지정",
+        "교통수단": response.transportation or "미지정",
+        "지원가능질환": response.supported_conditions,
+        "서비스유형": response.service_types,
+        "기타조건": {
+          "점심시간": f"{response.lunch_break}분" if response.lunch_break else "미지정",
+          "선호연령": f"{response.preferred_min_age}~{response.preferred_max_age}세" if response.preferred_min_age and response.preferred_max_age else "미지정",
+          "선호성별": response.preferred_gender or "미지정"
+        }
+      }
+    }
+    
+    for line in pp.pformat(structured_result).split('\n'):
+      logger.info(f"   {line}")
+    logger.info("✅ 데이터 구조화 완료\n")
+    
+    # 처리 시간 계산
+    processing_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+    
+    # 완료 요약
+    completion_summary = {
+      "변환 상태": "완료",
+      "처리시간": f"{processing_time_ms}ms",
+      "변환된 필드": len([field for field in [
+        response.day_of_week, response.work_start_time, response.work_end_time,
+        response.work_area, response.transportation, response.supported_conditions,
+        response.service_types, response.preferred_gender
+      ] if field is not None and field != []])
+    }
+    
+    logger.info("=" * 100)
+    logger.info("✅ === AI 데이터 변환 완료 요약 ===")
+    for line in pp.pformat(completion_summary).split('\n'):
+      logger.info(f"   {line}")
+    logger.info("=" * 100)
+    
     return response
       
   except HTTPException:
+    logger.error("❌ HTTP 예외 발생")
     raise
   except Exception as e:
-    logger.error(f"비정형 데이터 변환 중 오류 발생: {str(e)}")
+    processing_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+    
+    error_info = {
+      "변환 상태": "실패",
+      "오류 유형": type(e).__name__,
+      "오류 내용": str(e),
+      "처리시간": f"{processing_time_ms}ms"
+    }
+    
+    logger.error("=" * 100)
+    logger.error("❌ === AI 데이터 변환 오류 발생 ===")
+    for line in pp.pformat(error_info).split('\n'):
+      logger.error(f"   {line}")
+    logger.error("=" * 100)
+    
     raise HTTPException(
       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail=f"데이터 변환 중 오류가 발생했습니다: {str(e)}"
+      detail=f"AI 데이터 변환 중 오류가 발생했습니다: {str(e)}"
     )
 
 def create_conversion_prompt(non_structured_data: str) -> str:
-  """LLM을 위한 프롬프트 생성"""
+  """AI 모델을 위한 변환 지시사항 생성"""
     
   prompt = f"""당신은 요양보호사 근무조건 분석 전문가입니다. 비정형 텍스트를 정확한 구조화된 데이터로 변환하는 것이 목표입니다.
 
@@ -145,16 +229,19 @@ def create_conversion_prompt(non_structured_data: str) -> str:
     
   return prompt
 
-async def call_openrouter_api(prompt: str) -> Dict[str, Any]:
-  """OpenRouter API를 통해 ChatGPT 모델 호출"""
+async def call_ai_model(non_structured_data: str) -> Dict[str, Any]:
+  """자체 AI 모델을 통한 데이터 변환"""
+  
+  # AI 모델 변환 지시사항 생성
+  conversion_instructions = create_conversion_prompt(non_structured_data)
   
   headers = {
-    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    "Authorization": f"Bearer {AI_API_KEY}",
     "Content-Type": "application/json",
   }
     
   payload = {
-    "model": "google/gemini-2.5-flash",  # 한국어 LLM 리더보드 참고해서 2가지 모델 선정 후 가격 비교하여 최종 선정
+    "model": "google/gemini-2.5-flash",
     "messages": [
       {
         "role": "system",
@@ -162,35 +249,36 @@ async def call_openrouter_api(prompt: str) -> Dict[str, Any]:
       },
       {
         "role": "user", 
-        "content": prompt
+        "content": conversion_instructions
       }
     ],
-    "temperature": 0.1,  # 일관성을 위해 낮은 온도 설정
+    "temperature": 0.1,
     "max_tokens": 1000
   }
     
   async with httpx.AsyncClient(timeout=30.0) as client:
     try:
       response = await client.post(
-          f"{OPENROUTER_BASE_URL}/chat/completions",
+          f"{AI_BASE_URL}/chat/completions",
           headers=headers,
           json=payload
       )
         
       if response.status_code != 200:
           error_detail = response.text
-          logger.error(f"OpenRouter API 오류: {response.status_code} - {error_detail}")
+          logger.error(f"AI 모델 처리 오류: {response.status_code}")
           raise HTTPException(
               status_code=status.HTTP_502_BAD_GATEWAY,
-              detail=f"OpenRouter API 호출 실패: {response.status_code}"
+              detail=f"AI 모델 처리 실패: {response.status_code}"
           )
         
       result = response.json()
         
       if "choices" not in result or not result["choices"]:
+          logger.error("❌ AI 모델 응답 오류")
           raise HTTPException(
               status_code=status.HTTP_502_BAD_GATEWAY,
-              detail="OpenRouter API 응답에 choices가 없습니다."
+              detail="AI 모델 응답 오류"
           )
         
       content = result["choices"][0]["message"]["content"]
@@ -200,78 +288,80 @@ async def call_openrouter_api(prompt: str) -> Dict[str, Any]:
         # 마크다운 코드블록 제거
         content = content.strip()
         if content.startswith('```json'):
-          content = content[7:]  # ```json 제거
+          content = content[7:]
         if content.startswith('```'):
-          content = content[3:]   # ``` 제거
+          content = content[3:]
         if content.endswith('```'):
-          content = content[:-3]  # ``` 제거
+          content = content[:-3]
         content = content.strip()
         
         parsed_json = json.loads(content)
         return parsed_json
       except json.JSONDecodeError as e:
-        logger.error(f"LLM 응답 JSON 파싱 오류: {content}")
+        logger.error(f"AI 응답 데이터 파싱 오류")
         raise HTTPException(
           status_code=status.HTTP_502_BAD_GATEWAY,
-          detail="LLM 응답을 JSON으로 파싱할 수 없습니다."
+          detail="AI 응답 데이터 파싱 오류"
         )
             
-      except httpx.TimeoutException:
-        raise HTTPException(
-          status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-          detail="OpenRouter API 호출 시간 초과"
-        )
+    except httpx.TimeoutException:
+      logger.error("❌ AI 모델 응답 시간 초과")
+      raise HTTPException(
+        status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+        detail="AI 모델 응답 시간 초과"
+      )
     except httpx.RequestError as e:
-      logger.error(f"OpenRouter API 요청 오류: {str(e)}")
+      logger.error(f"AI 모델 연결 오류: {str(e)}")
       raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
-        detail="OpenRouter API 연결 오류"
+        detail="AI 모델 연결 오류"
       )
 
-def parse_llm_response(llm_data: Dict[str, Any]) -> ConvertNonStructuredDataToStructuredDataResponse:
-    """LLM 응답을 DTO로 변환"""
+def parse_ai_response(ai_data: Dict[str, Any]) -> ConvertNonStructuredDataToStructuredDataResponse:
+    """AI 응답을 DTO로 변환"""
+    pp = pprint.PrettyPrinter(indent=2, width=120, depth=None)
     
     try:
-      # 요일 검증 및 변환
+      # 요일 데이터 변환
       day_of_week = []
-      if "day_of_week" in llm_data and llm_data["day_of_week"]:
+      if "day_of_week" in ai_data and ai_data["day_of_week"]:
         valid_days = [day.value for day in DayOfWeek]
-        day_of_week = [day for day in llm_data["day_of_week"] if day in valid_days]
+        day_of_week = [day for day in ai_data["day_of_week"] if day in valid_days]
       
-      # 지원 질환 검증 및 변환
+      # 지원 질환 데이터 변환
       supported_conditions = []
-      if "supported_conditions" in llm_data and llm_data["supported_conditions"]:
+      if "supported_conditions" in ai_data and ai_data["supported_conditions"]:
         valid_conditions = [condition.value for condition in Disease]
-        supported_conditions = [condition for condition in llm_data["supported_conditions"] if condition in valid_conditions]
+        supported_conditions = [condition for condition in ai_data["supported_conditions"] if condition in valid_conditions]
       
-      # 선호 성별 검증
+      # 선호 성별 데이터 변환
       preferred_gender = None
-      if "preferred_gender" in llm_data and llm_data["preferred_gender"]:
+      if "preferred_gender" in ai_data and ai_data["preferred_gender"]:
         valid_genders = [gender.value for gender in PreferredGender]
-        if llm_data["preferred_gender"] in valid_genders:
-          preferred_gender = llm_data["preferred_gender"]
+        if ai_data["preferred_gender"] in valid_genders:
+          preferred_gender = ai_data["preferred_gender"]
       
-      # 서비스 유형 검증 및 변환
+      # 서비스 유형 데이터 변환
       service_types = []
-      if "service_types" in llm_data and llm_data["service_types"]:
+      if "service_types" in ai_data and ai_data["service_types"]:
         valid_service_types = [service_type.value for service_type in ServiceType]
-        service_types = [service_type for service_type in llm_data["service_types"] if service_type in valid_service_types]
+        service_types = [service_type for service_type in ai_data["service_types"] if service_type in valid_service_types]
       
       # 응답 DTO 생성
       response = ConvertNonStructuredDataToStructuredDataResponse(
         day_of_week=day_of_week,
-        work_start_time=llm_data.get("work_start_time"),
-        work_end_time=llm_data.get("work_end_time"),
-        work_min_time=llm_data.get("work_min_time"),
-        work_max_time=llm_data.get("work_max_time"),
-        available_time=llm_data.get("available_time"),
-        work_area=llm_data.get("work_area"),
-        transportation=llm_data.get("transportation"),
-        lunch_break=llm_data.get("lunch_break"),
-        buffer_time=llm_data.get("buffer_time"),
+        work_start_time=ai_data.get("work_start_time"),
+        work_end_time=ai_data.get("work_end_time"),
+        work_min_time=ai_data.get("work_min_time"),
+        work_max_time=ai_data.get("work_max_time"),
+        available_time=ai_data.get("available_time"),
+        work_area=ai_data.get("work_area"),
+        transportation=ai_data.get("transportation"),
+        lunch_break=ai_data.get("lunch_break"),
+        buffer_time=ai_data.get("buffer_time"),
         supported_conditions=supported_conditions,
-        preferred_min_age=llm_data.get("preferred_min_age"),
-        preferred_max_age=llm_data.get("preferred_max_age"),
+        preferred_min_age=ai_data.get("preferred_min_age"),
+        preferred_max_age=ai_data.get("preferred_max_age"),
         preferred_gender=preferred_gender,
         service_types=service_types
       )
@@ -279,8 +369,8 @@ def parse_llm_response(llm_data: Dict[str, Any]) -> ConvertNonStructuredDataToSt
       return response
         
     except Exception as e:
-      logger.error(f"LLM 응답 파싱 오류: {str(e)}")
+      logger.error(f"데이터 구조화 중 오류: {str(e)}")
       raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="LLM 응답 데이터 파싱 중 오류가 발생했습니다."
+        detail="데이터 구조화 중 오류가 발생했습니다."
       )
