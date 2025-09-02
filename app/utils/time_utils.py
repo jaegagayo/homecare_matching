@@ -59,8 +59,10 @@ def is_time_overlap(
     두 시간대가 겹치는지 확인
     
     Args:
+        - 선호 시간
         start_time1: 첫 번째 시간대 시작 시간 (HH:MM)
         end_time1: 첫 번째 시간대 종료 시간 (HH:MM)
+        - 요양보호사 근무 시간
         start_time2: 두 번째 시간대 시작 시간 (HH:MM)
         end_time2: 두 번째 시간대 종료 시간 (HH:MM)
         
@@ -84,31 +86,7 @@ def is_time_overlap(
         return True
     
     # 시간대 겹침 확인 로직
-    # 경우 1: 첫 번째 시간대가 두 번째 시간대와 완전히 겹치는 경우
-    if start1 <= start2 and end1 >= end2:
-        return True
-        
-    # 경우 2: 두 번째 시간대가 첫 번째 시간대와 완전히 겹치는 경우
-    if start2 <= start1 and end2 >= end1:
-        return True
-        
-    # 경우 3: 첫 번째 시간대가 두 번째 시간대의 시작 부분과 겹치는 경우
-    if start1 <= start2 < end1:
-        return True
-        
-    # 경우 4: 첫 번째 시간대가 두 번째 시간대의 끝 부분과 겹치는 경우
-    if start1 < end2 <= end1:
-        return True
-        
-    # 경우 5: 두 번째 시간대가 첫 번째 시간대의 시작 부분과 겹치는 경우
-    if start2 <= start1 < end2:
-        return True
-        
-    # 경우 6: 두 번째 시간대가 첫 번째 시간대의 끝 부분과 겹치는 경우
-    if start2 < end1 <= end2:
-        return True
-        
-    return False
+    return start2 <= start1 and end2 >= end1
 
 def filter_caregivers_by_time_preference(
     caregivers: List[CaregiverForMatchingDTO],
@@ -133,8 +111,8 @@ def filter_caregivers_by_time_preference(
     filtered_caregivers = []
     
     for caregiver in caregivers:
-        caregiver_start_time = getattr(caregiver.preferences, 'work_start_time', None)
-        caregiver_end_time = getattr(caregiver.preferences, 'work_end_time', None)
+        caregiver_start_time = getattr(caregiver, 'workStartTime', None)
+        caregiver_end_time = getattr(caregiver, 'workEndTime', None)
         
         # 요양보호사 근무시간 정보가 없는 경우 기본적으로 통과
         if not caregiver_start_time or not caregiver_end_time:
