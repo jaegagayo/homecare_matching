@@ -66,6 +66,7 @@ class NaverDirectionClient:
                     
                     if response.status == 200:
                         data = await response.json()
+                        logger.debug(f"네이버 API 응답: {json.dumps(data, indent=2, ensure_ascii=False)}")
                         return self._extract_travel_time(data)
                     else:
                         error_text = await response.text()
@@ -95,14 +96,15 @@ class NaverDirectionClient:
                 return None
             
             route = api_response.get('route', {})
-            trafast = route.get('trafast', [])
+            # traoptimal 또는 trafast 경로 정보 확인
+            route_data = route.get('traoptimal', route.get('trafast', []))
             
-            if not trafast:
+            if not route_data:
                 logger.error("경로 정보를 찾을 수 없습니다")
                 return None
             
             # 첫 번째 경로의 소요시간 사용 (밀리초 단위)
-            duration_ms = trafast[0].get('summary', {}).get('duration', 0)
+            duration_ms = route_data[0].get('summary', {}).get('duration', 0)
             
             # 밀리초를 분으로 변환
             duration_minutes = round(duration_ms / 1000 / 60)
