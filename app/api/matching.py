@@ -19,13 +19,18 @@ import pprint
 
 # 스키마 import
 from ..dto.matching import MatchingRequestDTO, MatchingResponseDTO, MatchedCaregiverDTO, CaregiverForMatchingDTO
-# from ..models.matching import MatchedCaregiver
-from ..dto.converting import ConvertNonStructuredDataToStructuredDataRequest
-from ..api.converting import convert_non_structured_data_to_structured_data
+
+# TODO 추후 LLM 연동에 따라 선호조건 적용할 때 주석 해제
+# from ..dto.converting import ConvertNonStructuredDataToStructuredDataRequest
+# from ..dto.converting import ConvertNonStructuredDataToStructuredDataRequest
+
+# 유틸리티 함수 import
 from ..utils.naver_direction import ETACalculator
 from ..utils.time_utils import filter_caregivers_by_time_preference
+from ..utils.matching_filters import evaluate_caregiver_match
 
 # ORM 및 데이터베이스 import
+# from ..models.matching import MatchedCaregiver
 from ..database import get_db_session
 from ..repositories.caregiver_repository import get_all_caregivers
 
@@ -320,7 +325,10 @@ async def recommend_matching(request: MatchingRequestDTO):
                                      {"radius_km": 15, "request_location": f"({service_location[0]}, {service_location[1]})"})
         
         # 5. LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성
-        qualified_candidates = await filter_by_preferences(nearby_candidates)
+        qualified_candidates = []
+        for candidate in nearby_candidates:
+            qualified_candidate = await evaluate_caregiver_match([candidate], request)
+            qualified_candidates.append(qualified_candidate)
         processing_results["preference_filtering"] = {"status": "success", "count": len(qualified_candidates)}
         logger.info(f"선호조건 필터링 완료: {len(qualified_candidates)}명")
         
@@ -511,58 +519,6 @@ async def load_nearby_caregivers(
         
     except Exception as e:
         raise MatchingProcessError("radius_filtering", f"근거리 후보군 로드 중 오류: {str(e)}")
-
-async def filter_by_preferences(
-    nearby_candidates: List[Tuple[CaregiverForMatchingDTO, float]], 
-) -> List[Tuple[CaregiverForMatchingDTO, float]]:
-    """LLM 선호조건 변환 및 필터링으로 조건부합 후보군 생성"""
-    try:
-        logger.info(f"LLM 선호조건 필터링 시작: {len(nearby_candidates)}명의 후보군")
-        
-        qualified_candidates = []
-        
-        for caregiver, distance in nearby_candidates:
-            try:
-                # 요양보호사의 선호조건이 있는 경우에만 LLM 변환 수행
-                if (getattr(caregiver, 'serviceType', None) not in (None, []) or 
-                    getattr(caregiver, 'supportedCondition', None) not in (None, [])):
-                    
-                    logger.info(f"요양보호사 ID {caregiver.caregiverId}의 선호조건 분석 중")
-                    
-                    # 선호조건 텍스트 구성 (구조화된 데이터를 텍스트로 변환)
-                    preferences_text = f"근무시간: {getattr(caregiver, 'workStartTime', '')}-{getattr(caregiver, 'workEndTime', '')}, " \
-                                     f"선호 서비스: {getattr(caregiver, 'serviceType', [])}, " \
-                                     f"지원 질환: {getattr(caregiver, 'supportedCondition', [])}"
-                    
-                    # LLM 서비스 호출하여 비정형 텍스트를 정형 데이터로 변환
-                    convert_request = ConvertNonStructuredDataToStructuredDataRequest(
-                        non_structured_data=preferences_text
-                    )
-                    structured_preferences = await convert_non_structured_data_to_structured_data(convert_request)
-                    
-                    # 기본적인 매칭 로직
-                    is_qualified = True  # 임시로 모든 후보자를 통과시킴
-                    
-                    if is_qualified:
-                        qualified_candidates.append((caregiver, distance))
-                        logger.info(f"요양보호사 ID {caregiver.caregiverId} 조건 부합 - 선정")
-                    else:
-                        logger.info(f"요양보호사 ID {caregiver.caregiverId} 조건 불일치 - 제외")
-                else:
-                    # 선호조건이 없는 경우 기본적으로 통과
-                    qualified_candidates.append((caregiver, distance))
-                    logger.info(f"요양보호사 ID {caregiver.caregiverId} 선호조건 없음 - 기본 선정")
-                    
-            except Exception as e:
-                logger.warning(f"요양보호사 ID {caregiver.caregiverId} 필터링 중 오류: {str(e)} - 기본 선정")
-                # 오류 발생 시 기본적으로 통과
-                qualified_candidates.append((caregiver, distance))
-        
-        logger.info(f"LLM 선호조건 필터링 완료: {len(qualified_candidates)}명 선정")
-        return qualified_candidates
-        
-    except Exception as e:
-        raise MatchingProcessError("preference_filtering", f"선호조건 필터링 중 오류: {str(e)}")
 
 async def calculate_travel_times(
     qualified_candidates: List[Tuple[CaregiverForMatchingDTO, float]],
