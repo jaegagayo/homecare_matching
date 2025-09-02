@@ -63,11 +63,11 @@ async def test_database_connection():
                     # 첫 번째 요양보호사 정보 출력 (샘플)
                     first_caregiver = caregivers[0]
                     print(f"   샘플 데이터:")
-                    print(f"   - ID: {first_caregiver.caregiver_id}")
-                    print(f"   - 사용자 ID: {first_caregiver.user_id}")
+                    print(f"   - ID: {first_caregiver.caregiverId}")
+                    print(f"   - 사용자 ID: {first_caregiver.userId}")
                     print(f"   - 이름: {first_caregiver.name}")
                     print(f"   - 주소: {first_caregiver.address}")
-                    print(f"   - 위치: ({first_caregiver.latitude}, {first_caregiver.longitude})")
+                    print(f"   - 위치: {first_caregiver.location}")
                 else:
                     print("   데이터베이스에 요양보호사 데이터가 없습니다")
                     
