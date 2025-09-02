@@ -7,6 +7,8 @@ Docker Compose 환경에서 데이터베이스 연결을 확인합니다.
 import asyncio
 import os
 import sys
+import json
+import csv
 from pathlib import Path
 
 # 프로젝트 루트를 PYTHONPATH에 추가
@@ -16,6 +18,48 @@ sys.path.insert(0, str(project_root))
 from app.database import get_db_session, engine
 from app.repositories.caregiver_repository import get_all_caregivers
 from sqlalchemy import text
+
+async def export_caregivers_data(caregivers, format_type):
+    """요양보호사 데이터를 JSON 또는 CSV로 내보내기"""
+    from datetime import datetime
+    
+    # 데이터를 딕셔너리 리스트로 변환
+    caregivers_data = []
+    for caregiver in caregivers:
+        caregiver_dict = {
+            'caregiverId': caregiver.caregiverId,
+            'userId': caregiver.userId,
+            'name': caregiver.name,
+            'address': caregiver.address,
+            'location': str(caregiver.location) if caregiver.location else None,
+            'phone': getattr(caregiver, 'phone', None),
+            'experience': getattr(caregiver, 'experience', None),
+            'specialties': getattr(caregiver, 'specialties', None),
+            'rating': getattr(caregiver, 'rating', None),
+            'availability': getattr(caregiver, 'availability', None)
+        }
+        caregivers_data.append(caregiver_dict)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if format_type == 'json':
+        filename = f"caregivers_data_{timestamp}.json"
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(caregivers_data, f, ensure_ascii=False, indent=2, default=str)
+        print(f"✅ JSON 파일로 내보내기 완료: {filename}")
+        
+    elif format_type == 'csv':
+        filename = f"caregivers_data_{timestamp}.csv"
+        if caregivers_data:
+            fieldnames = caregivers_data[0].keys()
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(caregivers_data)
+            print(f"✅ CSV 파일로 내보내기 완료: {filename}")
+    
+    print(f"   내보낸 데이터 수: {len(caregivers_data)}명")
+    print(f"   파일 위치: {os.path.abspath(filename)}")
 
 async def test_database_connection():
     """데이터베이스 연결 테스트"""
@@ -68,6 +112,12 @@ async def test_database_connection():
                     print(f"   - 이름: {first_caregiver.name}")
                     print(f"   - 주소: {first_caregiver.address}")
                     print(f"   - 위치: {first_caregiver.location}")
+                    
+                    # 전체 데이터 내보내기 옵션
+                    export_choice = input("\n전체 요양보호사 데이터를 내보내시겠습니까? (json/csv/no): ").lower()
+                    
+                    if export_choice in ['json', 'csv']:
+                        await export_caregivers_data(caregivers, export_choice)
                 else:
                     print("   데이터베이스에 요양보호사 데이터가 없습니다")
                     
