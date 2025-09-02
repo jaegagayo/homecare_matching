@@ -3,7 +3,7 @@
 SQLAlchemy ORM을 사용한 데이터베이스 조회 기능
 """
 
-from typing import List
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
