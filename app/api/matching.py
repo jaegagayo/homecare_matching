@@ -36,31 +36,9 @@ async def get_all_caregivers_from_db() -> List[CaregiverForMatchingDTO]:
     try:
         # 데이터베이스 세션 의존성 주입
         async for session in get_db_session():
-            # ORM을 사용하여 모든 요양보호사 조회
+            # ORM을 사용하여 모든 요양보호사 조회 (이미 완전한 DTO로 변환됨)
             caregivers = await get_all_caregivers(session)
-            
-            # ORM 모델을 DTO로 변환
-            caregiver_dtos = []
-            for caregiver in caregivers:
-                # 위치 정보가 있는 경우에만 처리
-                if caregiver.latitude is not None and caregiver.longitude is not None:
-                    caregiver_dto = CaregiverForMatchingDTO(
-                        caregiverId=str(caregiver.caregiver_id),
-                        userId=str(caregiver.user_id),
-                        name=caregiver.name,
-                        address=caregiver.address,
-                        addressType=caregiver.address_type,
-                        location=f"{caregiver.latitude},{caregiver.longitude}",
-                        career=str(caregiver.career) if caregiver.career else None,
-                        koreanProficiency=caregiver.korean_proficiency,
-                        isAccompanyOuting=caregiver.is_accompany_outing,
-                        selfIntroduction=caregiver.self_introduction,
-                        verifiedStatus=caregiver.verified_status,
-                        preferences=None  # 선호도 정보는 별도로 처리 필요
-                    )
-                    caregiver_dtos.append(caregiver_dto)
-            
-            return caregiver_dtos
+            return caregivers
     except Exception as e:
         logger.error(f"데이터베이스에서 요양보호사 조회 중 오류: {str(e)}")
         # 오류 발생 시 빈 리스트 반환 (기존 동작 유지)

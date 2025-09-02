@@ -75,6 +75,14 @@ class CaregiverForMatchingDTO(BaseModel):
     isAccompanyOuting: Optional[bool] = Field(None, description="외출 동행 가능 여부")
     selfIntroduction: Optional[str] = Field(None, description="자기소개")
     verifiedStatus: Optional[str] = Field(None, description="인증 상태")
+    # 매칭 처리를 위한 추가 속성들
+    workStartTime: Optional[str] = Field(None, description="근무 시작 시간")
+    workEndTime: Optional[str] = Field(None, description="근무 종료 시간")
+    workArea: Optional[str] = Field(None, description="근무 지역")
+    baseLocation: Optional[str] = Field(None, description="기본 위치 (위도,경도)")
+    careerYears: Optional[int] = Field(None, description="경력 연수")
+    transportation: Optional[str] = Field(None, description="교통수단")
+    serviceType: Optional[str] = Field(None, description="서비스 유형")
     preferences: Optional[CaregiverPreference] = Field(None, description="선호 조건")
 
 class MatchedCaregiverDTO(BaseModel):

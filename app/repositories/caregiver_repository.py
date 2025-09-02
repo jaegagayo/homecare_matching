@@ -50,7 +50,7 @@ async def get_all_caregivers(session: AsyncSession) -> List[CaregiverForMatching
                     workEndTime=str(pref.work_end_time) if pref and pref.work_end_time else None,
                     workArea=pref.work_area if pref else None,
                     serviceType=None,  # service_types 컬럼이 없으므로 None
-                    baseLocation=None,  # location 컬럼이 없으므로 None
+                    baseLocation=f"{pref.latitude},{pref.longitude}" if pref.latitude and pref.longitude else None,
                     careerYears=caregiver.career if caregiver.career else None,
                     transportation=pref.transportation if pref else None,
                     preferences=None  # 필요시 별도로 처리
