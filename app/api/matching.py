@@ -15,6 +15,7 @@ from typing import List, Tuple, Dict, Any, Optional
 import logging
 import asyncio
 from datetime import datetime
+import pprint
 
 # 스키마 import
 from ..dto.matching import MatchingRequestDTO, MatchingResponseDTO, MatchedCaregiverDTO, CaregiverForMatchingDTO
@@ -67,114 +68,187 @@ async def recommend_matching_logging(request: MatchingRequestDTO):
     위치 기반 요양보호사 매칭 처리 API - 상세 로깅 버전
     """
     processing_results = {}
+    pp = pprint.PrettyPrinter(indent=2, width=120, depth=None)
     
-    logger.info(f"매칭 요청 시작 - 서비스 요청 ID: {request.serviceRequest.serviceRequestId}")
+    logger.info("=" * 100)
+    logger.info(f"🔍 매칭 요청 시작 - 서비스 요청 ID: {request.serviceRequest.serviceRequestId}")
+    logger.info("=" * 100)
     start_time = datetime.now()
     
     # 2. 전달받은 ServiceRequest 정보 출력
-    logger.info("=== 전달받은 ServiceRequest 정보 ===")
-    logger.info(f"서비스 요청 ID: {request.serviceRequest.serviceRequestId}")
-    logger.info(f"소비자 ID: {request.serviceRequest.consumerId}")
-    logger.info(f"서비스 주소: {request.serviceRequest.serviceAddress}")
-    logger.info(f"주소 유형: {request.serviceRequest.addressType}")
-    logger.info(f"위치 좌표: {request.serviceRequest.location}")
-    logger.info(f"요청 날짜: {request.serviceRequest.requestDate}")
-    logger.info(f"선호 시작 시간: {request.serviceRequest.preferredStartTime}")
-    logger.info(f"선호 종료 시간: {request.serviceRequest.preferredEndTime}")
-    logger.info(f"서비스 시간: {request.serviceRequest.duration}분")
-    logger.info(f"서비스 유형: {request.serviceRequest.serviceType}")
-    logger.info(f"추가 정보: {request.serviceRequest.additionalInformation}")
-    logger.info("입력값 요청 검증 완료")
+    logger.info("\n📋 === 전달받은 ServiceRequest 정보 ===")
+    service_request_info = {
+        "서비스 요청 ID": request.serviceRequest.serviceRequestId,
+        "소비자 ID": request.serviceRequest.consumerId,
+        "서비스 주소": request.serviceRequest.serviceAddress,
+        "주소 유형": request.serviceRequest.addressType,
+        "위치 좌표": request.serviceRequest.location,
+        "요청 날짜": request.serviceRequest.requestDate,
+        "선호 시작 시간": request.serviceRequest.preferredStartTime,
+        "선호 종료 시간": request.serviceRequest.preferredEndTime,
+        "서비스 시간": f"{request.serviceRequest.duration}분",
+        "서비스 유형": request.serviceRequest.serviceType,
+        "추가 정보": request.serviceRequest.additionalInformation
+    }
+    
+    for line in pp.pformat(service_request_info).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("✅ 입력값 요청 검증 완료\n")
     
     # 3. 데이터베이스에서 모든 요양보호사 목록 조회
     all_caregivers = await get_all_caregivers_from_db()
     processing_results["db_loading"] = {"status": "success", "count": len(all_caregivers)}
-    logger.info(f"데이터베이스에서 요양보호사 조회 완료: 총 {len(all_caregivers)}명")
+    
+    db_result = {
+        "상태": "성공",
+        "조회된 요양보호사 수": f"{len(all_caregivers)}명"
+    }
+    
+    logger.info("💾 === 데이터베이스 조회 결과 ===")
+    for line in pp.pformat(db_result).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("")
     
     # 4-1. 선호 근무요일 필터링 [월~금] - 8명 필터링
-    weekday_filtered_caregivers = all_caregivers[8:]  # 시뮬레이션: 8명 제외
-    logger.info(f"=== 선호 근무요일 필터링 결과 [월~금] ===")
-    logger.info(f"필터링된 요양보호사: 8명")
-    logger.info(f"필터링 후 남은 요양보호사: {len(weekday_filtered_caregivers)}명")
+    weekday_filtered_caregivers = all_caregivers[8:]
     
-    # 남은 요양보호사 리스트 출력 (이름과 근무요일)
-    for i, caregiver in enumerate(weekday_filtered_caregivers, 1):
-        logger.info(f"  {i}. 이름: {caregiver.name}, 근무요일: 월, 화, 수, 목, 금")
+    weekday_filter_result = {
+        "필터링 기준": "월~금",
+        "필터링된 요양보호사": "8명",
+        "남은 요양보호사": f"{len(weekday_filtered_caregivers)}명",
+        "남은 요양보호사 목록": [
+            {
+                "순번": i,
+                "이름": caregiver.name,
+                "근무요일": "월, 화, 수, 목, 금"
+            } for i, caregiver in enumerate(weekday_filtered_caregivers, 1)
+        ]
+    }
+    
+    logger.info("📅 === 선호 근무요일 필터링 결과 [월~금] ===")
+    for line in pp.pformat(weekday_filter_result).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("")
 
     # 4-2. 선호 근무시간 필터링 [9시 ~ 12시] - 7명 필터링  
-    time_filtered_caregivers = weekday_filtered_caregivers[7:]  # 추가로 7명 제외
-    logger.info(f"=== 선호 근무시간 필터링 결과 [9시 ~ 12시] ===")
-    logger.info(f"필터링된 요양보호사: 7명")
-    logger.info(f"필터링 후 남은 요양보호사: {len(time_filtered_caregivers)}명")
+    time_filtered_caregivers = weekday_filtered_caregivers[7:]
     
-    # 남은 요양보호사 리스트 출력 (이름과 근무시간)
-    for i, caregiver in enumerate(time_filtered_caregivers, 1):
-        logger.info(f"  {i}. 이름: {caregiver.name}, 근무시간: 9시 ~ 12시")
+    time_filter_result = {
+        "필터링 기준": "9시 ~ 12시",
+        "필터링된 요양보호사": "7명",
+        "남은 요양보호사": f"{len(time_filtered_caregivers)}명",
+        "남은 요양보호사 목록": [
+            {
+                "순번": i,
+                "이름": caregiver.name,
+                "근무시간": "9시 ~ 12시"
+            } for i, caregiver in enumerate(time_filtered_caregivers, 1)
+        ]
+    }
+    
+    logger.info("⏰ === 선호 근무시간 필터링 결과 [9시 ~ 12시] ===")
+    for line in pp.pformat(time_filter_result).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("")
 
     # 4-3. 선호 근무지역 필터링 [순천] - 6명 필터링
-    region_filtered_caregivers = time_filtered_caregivers[6:]  # 추가로 6명 제외
-    logger.info(f"=== 선호 근무지역 필터링 결과 [순천] ===")
-    logger.info(f"필터링된 요양보호사: 6명")
-    logger.info(f"필터링 후 남은 요양보호사: {len(region_filtered_caregivers)}명")
+    region_filtered_caregivers = time_filtered_caregivers[6:]
     
-    # 남은 요양보호사 리스트 출력 (이름과 근무지역)
-    for i, caregiver in enumerate(region_filtered_caregivers, 1):
-        work_area = caregiver.preferences.work_area if caregiver.preferences else caregiver.workArea or '정보없음'
-        logger.info(f"  {i}. 이름: {caregiver.name or 'N/A'}, 근무지역: {work_area}")
+    region_filter_result = {
+        "필터링 기준": "순천",
+        "필터링된 요양보호사": "6명",
+        "남은 요양보호사": f"{len(region_filtered_caregivers)}명",
+        "남은 요양보호사 목록": [
+            {
+                "순번": i,
+                "이름": caregiver.name or 'N/A',
+                "근무지역": caregiver.preferences.work_area if caregiver.preferences else caregiver.workArea or '정보없음'
+            } for i, caregiver in enumerate(region_filtered_caregivers, 1)
+        ]
+    }
+    
+    logger.info("🌍 === 선호 근무지역 필터링 결과 [순천] ===")
+    for line in pp.pformat(region_filter_result).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("")
 
     # 4-4. 지원가능한 상태조건 필터링 [치매, 와상] - 5명 필터링
-    condition_filtered_caregivers = region_filtered_caregivers[5:]  # 추가로 5명 제외
-    logger.info(f"=== 지원가능한 상태조건 필터링 결과 [치매, 와상] ===")
-    logger.info(f"필터링된 요양보호사: 5명")
-    logger.info(f"필터링 후 남은 요양보호사: {len(condition_filtered_caregivers)}명")
+    condition_filtered_caregivers = region_filtered_caregivers[5:]
     
-    # 남은 요양보호사 리스트 출력 (이름과 지원가능한 상태조건)
-    for i, caregiver in enumerate(condition_filtered_caregivers, 1):
-        logger.info(f"  {i}. 이름: {caregiver.name}, 지원가능조건: 치매, 와상")
+    condition_filter_result = {
+        "필터링 기준": "치매, 와상",
+        "필터링된 요양보호사": "5명",
+        "남은 요양보호사": f"{len(condition_filtered_caregivers)}명",
+        "남은 요양보호사 목록": [
+            {
+                "순번": i,
+                "이름": caregiver.name,
+                "지원가능조건": "치매, 와상"
+            } for i, caregiver in enumerate(condition_filtered_caregivers, 1)
+        ]
+    }
+    
+    logger.info("🏥 === 지원가능한 상태조건 필터링 결과 [치매, 와상] ===")
+    for line in pp.pformat(condition_filter_result).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("")
 
     # 4-5. 서비스 유형 필터링 [IN_HOME_SUPPORT] - 7명 필터링
-    service_type_filtered_caregivers = condition_filtered_caregivers[7:]  # 추가로 7명 제외
-    logger.info(f"=== 선호 서비스 유형 필터링 결과 [IN_HOME_SUPPORT] ===")
-    logger.info(f"필터링된 요양보호사: 7명")
-    logger.info(f"필터링 후 남은 요양보호사: {len(service_type_filtered_caregivers)}명")
+    service_type_filtered_caregivers = condition_filtered_caregivers[7:]
     
-    # 남은 요양보호사 리스트 출력 (이름과 서비스 유형)
-    for i, caregiver in enumerate(service_type_filtered_caregivers, 1):
-        logger.info(f"  {i}. 이름: {caregiver.name}, 서비스유형: IN_HOME_SUPPORT")
+    service_type_filter_result = {
+        "필터링 기준": "IN_HOME_SUPPORT",
+        "필터링된 요양보호사": "7명",
+        "남은 요양보호사": f"{len(service_type_filtered_caregivers)}명",
+        "남은 요양보호사 목록": [
+            {
+                "순번": i,
+                "이름": caregiver.name,
+                "서비스유형": "IN_HOME_SUPPORT"
+            } for i, caregiver in enumerate(service_type_filtered_caregivers, 1)
+        ]
+    }
+    
+    logger.info("🛠️ === 선호 서비스 유형 필터링 결과 [IN_HOME_SUPPORT] ===")
+    for line in pp.pformat(service_type_filter_result).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("")
     
     # 5. 가까운 거리 기준 점수 스코어링 후 최종 5명 선정 (가까운 순 정렬)
     final_matches_with_scores = []
-    
-    # 최종 필터링된 요양보호사 중 상위 5명 선택
     final_candidates = service_type_filtered_caregivers[:5]
     
     for i, caregiver in enumerate(final_candidates):
-        # 가까운 순으로 정렬된 시뮬레이션 데이터
-        distance_km = 1.2 + (i * 0.6)  # 1.2, 1.8, 2.4, 3.0, 3.6km
-        eta_minutes = 8 + (i * 2)      # 8, 10, 12, 14, 16분
-        score = 100 - (i * 2)          # 100, 98, 96, 94, 92점
-        
+        distance_km = 1.2 + (i * 0.6)
+        eta_minutes = 8 + (i * 2)
+        score = 100 - (i * 2)
         final_matches_with_scores.append((caregiver, eta_minutes, distance_km, score))
     
-    logger.info(f"=== 최종 매칭 결과 (가까운 거리 순 정렬) ===")
-    logger.info(f"최종 선정된 요양보호사: 5명")
+    final_matching_result = {
+        "최종 선정된 요양보호사": "5명",
+        "매칭 결과": [
+            {
+                "순위": f"{i}위",
+                "ID": caregiver.caregiverId,
+                "이름": caregiver.name or 'N/A',
+                "거리": f"{distance:.1f}km",
+                "예상시간": f"{eta}분",
+                "점수": f"{score}점",
+                "매칭기준": {
+                    "근무요일": "월~금 가능",
+                    "근무시간": "9시~12시 가능",
+                    "근무지역": "순천 지역",
+                    "지원조건": "치매, 와상 지원 가능",
+                    "서비스유형": "IN_HOME_SUPPORT 제공"
+                }
+            } for i, (caregiver, eta, distance, score) in enumerate(final_matches_with_scores, 1)
+        ]
+    }
     
-    for i, (caregiver, eta, distance, score) in enumerate(final_matches_with_scores, 1):
-        logger.info(f"  {i}위. ID: {caregiver.caregiverId}, "
-                   f"이름: {caregiver.name or 'N/A'}, "
-                   f"거리: {distance:.1f}km, "
-                   f"예상시간: {eta}분, "
-                   f"점수: {score}점")
-        
-        # 매칭 기준 정보 추가
-        matching_criteria = []
-        matching_criteria.append("근무요일: 월~금 가능")
-        matching_criteria.append("근무시간: 9시~12시 가능") 
-        matching_criteria.append("근무지역: 순천 지역")
-        matching_criteria.append("지원조건: 치매, 와상 지원 가능")
-        matching_criteria.append("서비스유형: IN_HOME_SUPPORT 제공")
-        
-        logger.info(f"    매칭기준: {', '.join(matching_criteria)}")
+    logger.info("🏆 === 최종 매칭 결과 (가까운 거리 순 정렬) ===")
+    for line in pp.pformat(final_matching_result).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("")
     
     # 응답 DTO 생성을 위해 기존 형식으로 변환
     final_matches = [(caregiver, eta, distance) for caregiver, eta, distance, _ in final_matches_with_scores]
@@ -188,8 +262,18 @@ async def recommend_matching_logging(request: MatchingRequestDTO):
         processingTimeMs=int((datetime.now() - start_time).total_seconds() * 35000)
     )
     
-    logger.info(f"매칭 완료 - 최종 선정: {len(matched_caregiver_dtos)}명, "
-                f"처리시간: {response.processingTimeMs}ms")
+    completion_summary = {
+        "매칭 상태": "완료",
+        "최종 선정": f"{len(matched_caregiver_dtos)}명",
+        "처리시간": f"{response.processingTimeMs}ms"
+    }
+    
+    logger.info("=" * 100)
+    logger.info("✅ === 매칭 완료 요약 ===")
+    for line in pp.pformat(completion_summary).split('\n'):
+        logger.info(f"   {line}")
+    logger.info("=" * 100)
+    
     return response
 
 @router.post("/recommend", response_model=MatchingResponseDTO)
